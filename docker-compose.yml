@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: sukimise
+      POSTGRES_USER: sukimise_user
+      POSTGRES_PASSWORD: sukimise_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sukimise_user -d sukimise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: golang:1.23-alpine
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable
+      JWT_SECRET: your-jwt-secret-key
+      PORT: 8080
+      HOST: 0.0.0.0
+      CGO_ENABLED: 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    working_dir: /app
+    command: sh -c "apk add --no-cache git && go mod download && go run cmd/server/main.go"
+
+  frontend:
+    image: node:18-alpine
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8080
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads_data:

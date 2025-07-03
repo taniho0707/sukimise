@@ -1,0 +1,56 @@
+version: '3.8'
+
+# 開発用設定（PostgreSQLポートを公開）
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: sukimise
+      POSTGRES_USER: sukimise_user
+      POSTGRES_PASSWORD: sukimise_password
+    ports:
+      - "5432:5432"  # 開発用にポートを公開
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sukimise_user -d sukimise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: golang:1.21-alpine
+    ports:
+      - "8080:8080"
+    environment:
+      # 開発時はlocalhostを使用
+      DATABASE_URL: postgres://sukimise_user:sukimise_password@localhost:5432/sukimise?sslmode=disable
+      JWT_SECRET: your-jwt-secret-key
+      PORT: 8080
+      CGO_ENABLED: 0
+    network_mode: host  # ホストネットワークを使用
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    command: sh -c "apk add --no-cache git && go mod download && go run cmd/server/main.go"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    image: node:18-alpine
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8080
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

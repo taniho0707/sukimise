@@ -1,0 +1,656 @@
+.store-detail-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.store-detail-container {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 32px;
+}
+
+/* ヘッダー */
+.store-header {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  color: white;
+  padding: 32px;
+}
+
+.store-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.store-title-section {
+  flex: 1;
+}
+
+.store-name {
+  font-size: 32px;
+  font-weight: bold;
+  margin: 0 0 12px 0;
+  line-height: 1.2;
+}
+
+.store-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.store-address {
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.price-range {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.store-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.store-actions .btn {
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.store-actions .btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-danger {
+  border-color: rgba(220, 53, 69, 0.5) !important;
+}
+
+.btn-danger:hover {
+  background: rgba(220, 53, 69, 0.2) !important;
+}
+
+/* 店舗画像セクション */
+.store-images-section {
+  padding: 24px 32px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.store-images {
+  max-width: 600px;
+}
+
+/* 基本情報グリッド */
+.store-info-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 32px;
+  padding: 32px;
+}
+
+.store-info-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.store-info-side {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.info-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.info-section h3 {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #007bff;
+}
+
+/* カテゴリとタグ */
+.categories, .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-tag {
+  background: #007bff;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tag {
+  background: #e9ecef;
+  color: #495057;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 営業時間・駐車場情報 */
+.business-hours, .parking-info {
+  line-height: 1.6;
+  color: #333;
+}
+
+.business-hours div, .parking-info div {
+  margin-bottom: 4px;
+}
+
+/* 位置情報 */
+.location-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coordinates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  color: #666;
+}
+
+.map-btn {
+  align-self: flex-start;
+}
+
+/* Web情報 */
+.web-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.web-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #007bff;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.web-link:hover {
+  color: #0056b3;
+}
+
+/* メタ情報 */
+.meta-info {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+}
+
+.meta-info div {
+  margin-bottom: 4px;
+}
+
+/* レビューセクション */
+.reviews-section {
+  border-top: 1px solid #e0e0e0;
+  padding: 32px;
+}
+
+.reviews-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.review-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.user-review-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.user-review-count {
+  font-size: 14px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+.reviews-header h2 {
+  font-size: 24px;
+  color: #333;
+  margin: 0;
+}
+
+.reviews-loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.no-reviews {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.no-reviews p {
+  margin: 0 0 8px 0;
+  line-height: 1.6;
+}
+
+/* レビューカード */
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.review-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  border-left: 4px solid #007bff;
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.review-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.review-actions-inline {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.btn-icon:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reviewer {
+  font-weight: bold;
+  color: #333;
+}
+
+.visit-date {
+  font-size: 14px;
+  color: #666;
+}
+
+.star-rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.star {
+  color: #ddd;
+  font-size: 18px;
+  transition: color 0.2s;
+}
+
+.star.filled {
+  color: #ffc107;
+}
+
+.rating-text {
+  margin-left: 4px;
+  font-size: 14px;
+  color: #666;
+}
+
+.review-content {
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.review-content p {
+  margin: 0;
+  color: #333;
+}
+
+.review-images {
+  margin-top: 12px;
+}
+
+.review-image-gallery {
+  max-width: 300px;
+}
+
+.review-payment-info {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 3px solid #28a745;
+}
+
+.review-payment-info .payment-amount,
+.review-payment-info .food-notes {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.review-payment-info .payment-amount:last-child,
+.review-payment-info .food-notes:last-child {
+  margin-bottom: 0;
+}
+
+.review-payment-info .label {
+  font-weight: 600;
+  color: #495057;
+  margin-right: 8px;
+  min-width: 80px;
+}
+
+.review-payment-info .amount {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.review-payment-info .notes {
+  color: #6c757d;
+}
+
+.review-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  color: #666;
+}
+
+.not-visited {
+  background: #ffc107;
+  color: #333;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ページネーション */
+.pagination {
+  margin-top: 24px;
+  padding: 20px;
+  border-top: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.pagination-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.pagination-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pagination-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pagination-info span {
+  font-size: 14px;
+  color: #495057;
+  font-weight: 500;
+}
+
+.reviews-count {
+  font-size: 12px !important;
+  color: #6c757d !important;
+  font-weight: normal !important;
+}
+
+.page-jumper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.page-input {
+  width: 80px;
+  padding: 6px 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.page-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.jump-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.jump-btn:hover {
+  background: #218838;
+}
+
+/* フッター */
+.store-detail-footer {
+  padding: 24px 32px;
+  border-top: 1px solid #e0e0e0;
+  background: #f8f9fa;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .store-detail-page {
+    padding: 0 16px;
+  }
+
+  .store-header {
+    padding: 24px 20px;
+  }
+
+  .store-header-content {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .store-name {
+    font-size: 24px;
+  }
+
+  .store-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .store-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .store-actions .btn {
+    flex: 1;
+  }
+
+  .store-info-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 24px 20px;
+  }
+
+  .store-images-section {
+    padding: 20px;
+  }
+
+  .reviews-section {
+    padding: 24px 20px;
+  }
+
+  .reviews-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .review-actions {
+    justify-content: stretch;
+  }
+
+  .review-actions .btn {
+    flex: 1;
+  }
+
+  .user-review-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .user-review-actions .btn {
+    width: 100%;
+  }
+
+  .store-detail-footer {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .store-header {
+    padding: 20px 16px;
+  }
+
+  .store-name {
+    font-size: 20px;
+  }
+
+  .store-info-grid {
+    padding: 20px 16px;
+  }
+
+  .info-section {
+    padding: 16px;
+  }
+
+  .reviews-section {
+    padding: 20px 16px;
+  }
+
+  .review-card {
+    padding: 16px;
+  }
+
+  .review-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ページネーションのモバイル対応 */
+  .pagination {
+    padding: 16px;
+  }
+
+  .pagination-controls {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pagination-info {
+    order: -1;
+  }
+
+  .page-jumper {
+    margin-top: 8px;
+  }
+
+  .page-input {
+    width: 60px;
+  }
+}
