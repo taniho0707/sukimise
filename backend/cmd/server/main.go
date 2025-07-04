@@ -49,14 +49,17 @@ func main() {
 	userRepo := repositories.NewUserRepository(db)
 	storeRepo := repositories.NewStoreRepository(db)
 	reviewRepo := repositories.NewReviewRepository(db)
+	viewerAuthRepo := repositories.NewViewerAuthRepository(db)
 
 	// Initialize services
 	userService := services.NewUserService(userRepo)
 	storeService := services.NewStoreService(storeRepo)
 	reviewService := services.NewReviewService(reviewRepo)
+	viewerAuthService := services.NewViewerAuthService(viewerAuthRepo)
 
 	// Initialize handlers
 	handler := handlers.NewHandler(userService, storeService, reviewService)
+	viewerAuthHandler := handlers.NewViewerAuthHandler(viewerAuthService)
 
 	// Set Gin mode based on environment
 	if cfg.IsProduction() {
@@ -98,6 +101,13 @@ func main() {
 			auth.POST("/refresh", handler.RefreshToken)
 		}
 
+		// Viewer authentication routes
+		viewer := api.Group("/viewer")
+		{
+			viewer.POST("/auth", viewerAuthHandler.AuthenticateViewer)
+			viewer.GET("/validate", viewerAuthHandler.ValidateViewerSession)
+		}
+
 		stores := api.Group("/stores")
 		{
 			stores.GET("", handler.GetStores)
@@ -136,6 +146,16 @@ func main() {
 			{
 				upload.POST("/image", handler.UploadImage)
 				upload.DELETE("/:filename", handler.DeleteUpload)
+			}
+
+			// Admin-only routes for viewer settings
+			admin := protected.Group("/admin")
+			admin.Use(middleware.RequireRole("admin"))
+			{
+				admin.GET("/viewer-settings", viewerAuthHandler.GetViewerSettings)
+				admin.PUT("/viewer-settings", viewerAuthHandler.UpdateViewerSettings)
+				admin.GET("/viewer-history", viewerAuthHandler.GetViewerLoginHistory)
+				admin.POST("/viewer-cleanup", viewerAuthHandler.CleanupExpiredSessions)
 			}
 		}
 	}

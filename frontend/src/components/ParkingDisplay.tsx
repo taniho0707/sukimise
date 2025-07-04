@@ -1,4 +1,5 @@
 import React from 'react'
+import './ParkingDisplay.css'
 
 interface ParkingInfo {
   hasPrivateParking: boolean
@@ -86,70 +87,6 @@ const ParkingDisplay: React.FC<ParkingDisplayProps> = ({ parkingInfo, className 
             </div>
           </div>
         )}
-
-        <style jsx={true}>{`
-          .parking-display {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-          }
-
-          .parking-features {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-          }
-
-          .parking-feature {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 14px;
-          }
-
-          .parking-feature.available {
-            background-color: #e8f5e8;
-            border: 1px solid #c3e6c3;
-            color: #2d5a2d;
-          }
-
-          .parking-feature.unavailable {
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            color: #6c757d;
-          }
-
-          .feature-icon {
-            font-size: 16px;
-            min-width: 20px;
-          }
-
-          .feature-text {
-            font-weight: 500;
-          }
-
-          .parking-memo {
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 12px;
-          }
-
-          .memo-label {
-            font-weight: 500;
-            color: #495057;
-            font-size: 13px;
-            margin-bottom: 6px;
-          }
-
-          .memo-content {
-            color: #6c757d;
-            font-size: 14px;
-            line-height: 1.4;
-          }
-        `}</style>
       </div>
     )
   }
@@ -163,20 +100,6 @@ const ParkingDisplay: React.FC<ParkingDisplayProps> = ({ parkingInfo, className 
             <div key={index}>{line}</div>
           ))}
         </div>
-
-        <style jsx={true}>{`
-          .parking-display {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-          }
-
-          .parking-text {
-            color: #495057;
-            font-size: 14px;
-            line-height: 1.4;
-          }
-        `}</style>
       </div>
     )
   }
@@ -188,38 +111,6 @@ const ParkingDisplay: React.FC<ParkingDisplayProps> = ({ parkingInfo, className 
         <span className="feature-icon">❓</span>
         <span className="feature-text">駐車場情報未設定</span>
       </div>
-
-      <style jsx={true}>{`
-        .parking-display {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .parking-feature {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 14px;
-        }
-
-        .parking-feature.unavailable {
-          background-color: #f8f9fa;
-          border: 1px solid #e9ecef;
-          color: #6c757d;
-        }
-
-        .feature-icon {
-          font-size: 16px;
-          min-width: 20px;
-        }
-
-        .feature-text {
-          font-weight: 500;
-        }
-      `}</style>
     </div>
   )
 }

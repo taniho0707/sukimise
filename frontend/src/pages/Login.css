@@ -48,3 +48,26 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.login-note {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.login-note p {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.login-note a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.login-note a:hover {
+  text-decoration: underline;
+}

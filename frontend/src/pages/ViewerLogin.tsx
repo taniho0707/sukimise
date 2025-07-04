@@ -1,14 +1,13 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '@/contexts/AuthContext'
+import { useViewerAuth } from '@/contexts/ViewerAuthContext'
 import toast from 'react-hot-toast'
 import './Login.css'
 
-const Login: React.FC = () => {
-  const [username, setUsername] = useState('')
+const ViewerLogin: React.FC = () => {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login } = useViewerAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -16,11 +15,11 @@ const Login: React.FC = () => {
     setLoading(true)
 
     try {
-      await login(username, password)
+      await login(password)
       toast.success('ログインしました')
-      navigate('/')
+      navigate('/viewer')
     } catch (error) {
-      toast.error('ログインに失敗しました')
+      toast.error('パスワードが間違っています')
     } finally {
       setLoading(false)
     }
@@ -31,24 +30,9 @@ const Login: React.FC = () => {
       <div className="login-container">
         <div className="login-card">
           <h1 className="login-title">Sukimise</h1>
-          <p className="login-subtitle">お気に入りの店記録サービス</p>
+          <p className="login-subtitle">閲覧者向けログイン</p>
           
           <form onSubmit={handleSubmit} className="login-form">
-            <div className="form-group">
-              <label htmlFor="username" className="form-label">
-                ユーザー名
-              </label>
-              <input
-                type="text"
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="form-input"
-                required
-                disabled={loading}
-              />
-            </div>
-            
             <div className="form-group">
               <label htmlFor="password" className="form-label">
                 パスワード
@@ -61,6 +45,7 @@ const Login: React.FC = () => {
                 className="form-input"
                 required
                 disabled={loading}
+                placeholder="管理者から提供されたパスワードを入力"
               />
             </div>
             
@@ -74,7 +59,8 @@ const Login: React.FC = () => {
           </form>
           
           <div className="login-note">
-            <p>閲覧者の方は<a href="/viewer-login">こちら</a>からログインしてください。</p>
+            <p>このページは閲覧者向けです。</p>
+            <p>編集者の方は<a href="/login">こちら</a>からログインしてください。</p>
           </div>
         </div>
       </div>
@@ -82,4 +68,4 @@ const Login: React.FC = () => {
   )
 }
 
-export default Login
+export default ViewerLogin

@@ -87,3 +87,35 @@ func (r *UserRepository) Delete(id uuid.UUID) error {
 	_, err := r.db.Exec(query, id)
 	return err
 }
+
+func (r *UserRepository) GetAll() ([]*models.User, error) {
+	query := `
+		SELECT id, username, email, password, role, created_at, updated_at
+		FROM users 
+		ORDER BY created_at ASC
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.Password,
+			&user.Role, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, &user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}

@@ -22,15 +22,19 @@ interface Review {
 interface ReviewListProps {
   reviews?: Review[]
   currentUserId?: string
-  onEditReview: (review: Review) => void
-  onDeleteReview: (reviewId: string) => void
+  onEditReview?: (review: Review) => void
+  onDeleteReview?: (reviewId: string) => void
+  showActions?: boolean
+  readOnly?: boolean
 }
 
 const ReviewList: React.FC<ReviewListProps> = ({ 
   reviews = [], 
   currentUserId, 
   onEditReview, 
-  onDeleteReview 
+  onDeleteReview,
+  showActions = true,
+  readOnly = false
 }) => {
   const renderStars = (rating: number) => {
     return '★'.repeat(rating) + '☆'.repeat(5 - rating)
@@ -51,7 +55,7 @@ const ReviewList: React.FC<ReviewListProps> = ({
   }
 
   const canEditReview = (review: Review) => {
-    return currentUserId && review.user_id === currentUserId
+    return !readOnly && showActions && currentUserId && review.user_id === currentUserId
   }
 
   // ページネーション関連の状態
@@ -130,14 +134,14 @@ const ReviewList: React.FC<ReviewListProps> = ({
                   {canEditReview(review) && (
                     <div className="review-actions-inline">
                       <button 
-                        onClick={() => onEditReview(review)}
+                        onClick={() => onEditReview?.(review)}
                         className="btn-icon"
                         title="編集"
                       >
                         ✏️
                       </button>
                       <button 
-                        onClick={() => onDeleteReview(review.id)}
+                        onClick={() => onDeleteReview?.(review.id)}
                         className="btn-icon"
                         title="削除"
                       >

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
+import { API_BASE_URL } from '@/config'
 
 interface FilterState {
   name: string
@@ -14,10 +15,10 @@ interface FilterState {
 }
 
 interface StoreFilterProps {
-  filters: FilterState
+  initialFilters: FilterState
   onFilterChange: (filters: FilterState) => void
-  onSearch: () => void
-  onReset: () => void
+  onSearch?: () => void
+  onReset?: () => void
 }
 
 
@@ -49,11 +50,16 @@ const generateTimeOptions = () => {
 
 const BUSINESS_TIMES = generateTimeOptions()
 
-const StoreFilter: React.FC<StoreFilterProps> = ({ filters, onFilterChange, onSearch, onReset }) => {
-
+const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChange, onSearch, onReset }) => {
+  const [filters, setFilters] = useState<FilterState>(initialFilters)
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const [isExpanded, setIsExpanded] = useState(true)
+
+  // initialFiltersが変更された場合にfiltersを更新
+  useEffect(() => {
+    setFilters(initialFilters)
+  }, [initialFilters])
 
   // 現在時刻から30分以上後の最短時間を取得
   const getDefaultBusinessDateTime = () => {
@@ -92,8 +98,8 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ filters, onFilterChange, onSe
         console.log('Fetching categories and tags...')
         
         const [categoriesRes, tagsRes] = await Promise.all([
-          axios.get('/api/v1/stores/categories'),
-          axios.get('/api/v1/stores/tags'),
+          axios.get(`${API_BASE_URL}/api/v1/stores/categories`),
+          axios.get(`${API_BASE_URL}/api/v1/stores/tags`),
         ])
         
         console.log('Categories response:', categoriesRes.data)
@@ -125,6 +131,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ filters, onFilterChange, onSe
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
     const updatedFilters = { ...filters, ...newFilters }
+    setFilters(updatedFilters)
     onFilterChange(updatedFilters)
   }
 

@@ -211,7 +211,7 @@ const StoreList: React.FC = () => {
       </div>
 
       <StoreFilter 
-        filters={filters}
+        initialFilters={filters}
         onFilterChange={handleFilterChange}
         onSearch={handleSearch}
         onReset={handleReset}

@@ -43,9 +43,14 @@ const Layout: React.FC = () => {
               <Link to="/stores/new" className="nav-link">
                 店舗登録
               </Link>
+              {user.role === 'admin' && (
+                <Link to="/admin/viewer-settings" className="nav-link">
+                  閲覧者設定
+                </Link>
+              )}
             </nav>
             <div className="user-menu">
-              <span className="user-name">{user.username}</span>
+              <span className="user-name">{user.username} ({user.role})</span>
               <button onClick={handleLogout} className="btn btn-secondary">
                 ログアウト
               </button>
