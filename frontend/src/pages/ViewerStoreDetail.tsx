@@ -139,7 +139,7 @@ const ViewerStoreDetail: React.FC = () => {
       
       <div className="store-detail-content">
         <div className="store-detail-main">
-          <StoreInfo store={store} />
+          <StoreInfo store={store} isViewer={true} />
           
           {store.photos && store.photos.length > 0 && (
             <div className="store-photos-section">

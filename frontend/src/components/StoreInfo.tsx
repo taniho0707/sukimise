@@ -2,6 +2,7 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import ImageGallery from './ImageGallery'
 import ParkingDisplay from './ParkingDisplay'
+import SafeBusinessHoursDisplay from './SafeBusinessHoursDisplay'
 
 interface Store {
   id: string
@@ -24,9 +25,10 @@ interface Store {
 
 interface StoreInfoProps {
   store: Store
+  isViewer?: boolean
 }
 
-const StoreInfo: React.FC<StoreInfoProps> = ({ store }) => {
+const StoreInfo: React.FC<StoreInfoProps> = ({ store, isViewer = false }) => {
   return (
     <>
       {/* 画像ギャラリー */}
@@ -46,11 +48,7 @@ const StoreInfo: React.FC<StoreInfoProps> = ({ store }) => {
             <div className="info-section">
               <h3>営業時間</h3>
               <div className="business-hours">
-                {store.business_hours.split('\n').map((line, index) => (
-                  <div key={index}>
-                    {line}
-                  </div>
-                ))}
+                <SafeBusinessHoursDisplay businessHours={store.business_hours} />
               </div>
             </div>
           )}
@@ -114,7 +112,7 @@ const StoreInfo: React.FC<StoreInfoProps> = ({ store }) => {
                 <div>経度: {store.longitude}</div>
               </div>
               <Link 
-                to={`/map?store=${store.id}`} 
+                to={isViewer ? `/viewer/map?store=${store.id}` : `/map?store=${store.id}`} 
                 className="btn btn-secondary map-btn"
               >
                 地図で表示

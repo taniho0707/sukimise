@@ -12,6 +12,7 @@ type StoreRepositoryInterface interface {
 	Create(store *models.Store) error
 	GetByID(id uuid.UUID) (*models.Store, error)
 	GetAll(filter *StoreFilter) ([]*models.Store, error)
+	GetCount(filter *StoreFilter) (int, error)
 	Update(store *models.Store) error
 	Delete(id uuid.UUID) error
 	GetAllCategories() ([]string, error)

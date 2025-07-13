@@ -17,10 +17,11 @@ type ErrorInfo struct {
 
 // MetaInfo represents metadata in API responses
 type MetaInfo struct {
-	Total  int `json:"total,omitempty"`
-	Page   int `json:"page,omitempty"`
-	Limit  int `json:"limit,omitempty"`
-	Offset int `json:"offset,omitempty"`
+	Total      int  `json:"total,omitempty"`
+	Page       *int `json:"page,omitempty"`
+	Limit      int  `json:"limit,omitempty"`
+	Offset     int  `json:"offset,omitempty"`
+	TotalPages *int `json:"total_pages,omitempty"`
 }
 
 // PaginationRequest represents pagination parameters

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import Map from '../components/Map'
+import SafeBusinessHoursDisplay from '../components/SafeBusinessHoursDisplay'
 import './MapView.css'
 
 interface Store {
@@ -12,16 +13,19 @@ interface Store {
   latitude: number
   longitude: number
   categories: string[]
-  business_hours?: string
+  business_hours?: string | object
   tags: string[]
 }
 
 const MapView: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [stores, setStores] = useState<Store[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState<Store | null>(null)
   const [showSidebar, setShowSidebar] = useState(false)
+  const [mapCenter, setMapCenter] = useState<[number, number]>([35.6762, 139.6503]) // デフォルト: 東京駅
+  const [mapZoom, setMapZoom] = useState(13)
 
   useEffect(() => {
     const fetchStores = async () => {
@@ -29,14 +33,32 @@ const MapView: React.FC = () => {
         setLoading(true)
         const response = await axios.get('/api/v1/stores')
         
+        let storesData: Store[] = []
         // Handle the new API response format
         if (response.data.success && response.data.data && response.data.data.stores) {
-          setStores(response.data.data.stores)
+          storesData = response.data.data.stores
         } else if (response.data.stores) {
           // Fallback for old format
-          setStores(response.data.stores)
+          storesData = response.data.stores
         } else {
-          setStores([])
+          storesData = []
+        }
+        
+        setStores(storesData)
+        
+        // URLパラメータから店舗IDを取得して、その店舗を中心に表示
+        const storeId = searchParams.get('store')
+        if (storeId && storesData.length > 0) {
+          const targetStore = storesData.find(store => store.id === storeId)
+          if (targetStore) {
+            setMapCenter([targetStore.latitude, targetStore.longitude])
+            setMapZoom(16) // より詳細なズームレベル
+            setSelectedStore(targetStore)
+            setShowSidebar(true)
+            console.log(`Centering map on store: ${targetStore.name} at ${targetStore.latitude}, ${targetStore.longitude}`)
+          } else {
+            console.warn(`Store with ID ${storeId} not found`)
+          }
         }
       } catch (error) {
         console.error('Stores fetch error:', error)
@@ -47,7 +69,7 @@ const MapView: React.FC = () => {
     }
 
     fetchStores()
-  }, [])
+  }, [searchParams])
 
   const handleStoreClick = (store: Store) => {
     setSelectedStore(store)
@@ -92,6 +114,8 @@ const MapView: React.FC = () => {
         <div className="map-wrapper">
           <Map
             stores={stores}
+            center={mapCenter}
+            zoom={mapZoom}
             height="calc(100vh - 140px)"
             onStoreClick={handleStoreClick}
             selectedStore={selectedStore}
@@ -141,9 +165,7 @@ const MapView: React.FC = () => {
                     <div className="info-item">
                       <strong>営業時間</strong>
                       <div className="business-hours">
-                        {selectedStore.business_hours.split('\n').map((line, index) => (
-                          <div key={index}>{line}</div>
-                        ))}
+                        <SafeBusinessHoursDisplay businessHours={selectedStore.business_hours} />
                       </div>
                     </div>
                   )}

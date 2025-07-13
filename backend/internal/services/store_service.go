@@ -35,6 +35,14 @@ func (s *StoreService) GetStores(filter *repositories.StoreFilter) ([]*models.St
 	return s.storeRepo.GetAll(filter)
 }
 
+func (s *StoreService) GetStoresCount(filter *repositories.StoreFilter) (int, error) {
+	if filter == nil {
+		filter = &repositories.StoreFilter{}
+	}
+	
+	return s.storeRepo.GetCount(filter)
+}
+
 func (s *StoreService) UpdateStore(store *models.Store) error {
 	return s.storeRepo.Update(store)
 }

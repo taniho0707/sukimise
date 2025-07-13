@@ -1,0 +1,40 @@
+package config
+
+import (
+	"errors"
+	"os"
+)
+
+type Config struct {
+	DiscordToken    string
+	DatabaseURL     string
+	SukimiseAPIURL  string
+	BotPort         string
+}
+
+func Load() (*Config, error) {
+	config := &Config{
+		DiscordToken:   os.Getenv("DISCORD_TOKEN"),
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		SukimiseAPIURL: os.Getenv("SUKIMISE_API_URL"),
+		BotPort:        os.Getenv("BOT_PORT"),
+	}
+
+	// Set default values
+	if config.SukimiseAPIURL == "" {
+		config.SukimiseAPIURL = "http://backend:8080"
+	}
+	if config.BotPort == "" {
+		config.BotPort = "8081"
+	}
+
+	// Validate required fields
+	if config.DiscordToken == "" {
+		return nil, errors.New("DISCORD_TOKEN is required")
+	}
+	if config.DatabaseURL == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+
+	return config, nil
+}

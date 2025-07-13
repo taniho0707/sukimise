@@ -621,3 +621,127 @@
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
+
+/* Pagination styles */
+.store-list-pagination {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.pagination-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.pagination-info {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pagination-button {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 40px;
+  text-align: center;
+}
+
+.pagination-button:hover:not(:disabled) {
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.pagination-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-button.active {
+  background: #007bff;
+  border-color: #007bff;
+  color: white;
+}
+
+.pagination-ellipsis {
+  padding: 8px 4px;
+  color: #666;
+  font-size: 14px;
+}
+
+.page-jump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-jump-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-jump-input {
+  width: 80px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.page-jump-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.page-jump-button {
+  padding: 6px 12px;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  background: #007bff;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.page-jump-button:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+@media (max-width: 768px) {
+  .pagination-controls {
+    gap: 4px;
+  }
+  
+  .pagination-button {
+    padding: 6px 8px;
+    min-width: 32px;
+    font-size: 12px;
+  }
+  
+  .page-jump-input {
+    width: 60px;
+  }
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import Map from '../components/Map'
@@ -37,9 +37,13 @@ interface Marker {
 }
 
 const ViewerMapView: React.FC = () => {
+  const [searchParams] = useSearchParams()
   const [stores, setStores] = useState<Store[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState<Store | null>(null)
+  const [showSidebar, setShowSidebar] = useState(false)
+  const [mapCenter, setMapCenter] = useState<[number, number]>([35.6762, 139.6503]) // デフォルト: 東京駅
+  const [mapZoom, setMapZoom] = useState(13)
   
   // 現在時刻から30分以上後の最短時間を計算
   const getCurrentPlus30MinTime = () => {
@@ -92,16 +96,31 @@ const ViewerMapView: React.FC = () => {
       const responseData = response.data
       
       // レスポンス構造を確認
-      let stores = []
+      let storesData = []
       if (responseData.success && responseData.data && responseData.data.stores) {
-        stores = responseData.data.stores
+        storesData = responseData.data.stores
       } else if (Array.isArray(responseData.data)) {
-        stores = responseData.data
+        storesData = responseData.data
       } else if (Array.isArray(responseData)) {
-        stores = responseData
+        storesData = responseData
       }
       
-      setStores(stores)
+      setStores(storesData)
+      
+      // URLパラメータから店舗IDを取得して、その店舗を中心に表示
+      const storeId = searchParams.get('store')
+      if (storeId && storesData.length > 0) {
+        const targetStore = storesData.find(store => store.id === storeId)
+        if (targetStore) {
+          setMapCenter([targetStore.latitude, targetStore.longitude])
+          setMapZoom(16) // より詳細なズームレベル
+          setSelectedStore(targetStore)
+          setShowSidebar(true)
+          console.log(`Centering map on store: ${targetStore.name} at ${targetStore.latitude}, ${targetStore.longitude}`)
+        } else {
+          console.warn(`Store with ID ${storeId} not found`)
+        }
+      }
     } catch (error) {
       console.error('Error fetching stores:', error)
       toast.error('店舗の取得に失敗しました')
@@ -112,7 +131,7 @@ const ViewerMapView: React.FC = () => {
 
   useEffect(() => {
     fetchStores(filterState)
-  }, [])
+  }, [searchParams])
 
   const handleFilterChange = (newFilters: FilterState) => {
     setFilterState(newFilters)
@@ -128,6 +147,12 @@ const ViewerMapView: React.FC = () => {
 
   const handleMarkerClick = (marker: Marker) => {
     setSelectedStore(marker.store)
+    setShowSidebar(true)
+  }
+
+  const handleCloseSidebar = () => {
+    setShowSidebar(false)
+    setSelectedStore(null)
   }
 
   return (
@@ -143,9 +168,17 @@ const ViewerMapView: React.FC = () => {
             onFilterChange={handleFilterChange}
           />
           
-          {selectedStore && (
+          {showSidebar && selectedStore && (
             <div className="selected-store-info">
-              <h3>選択中の店舗</h3>
+              <div className="selected-store-header">
+                <h3>選択中の店舗</h3>
+                <button
+                  onClick={handleCloseSidebar}
+                  className="close-btn"
+                >
+                  ×
+                </button>
+              </div>
               <div className="store-card">
                 <h4>
                   <Link to={`/viewer/stores/${selectedStore.id}`}>
@@ -174,8 +207,9 @@ const ViewerMapView: React.FC = () => {
           ) : (
             <Map
               markers={markers}
+              center={mapCenter}
+              zoom={mapZoom}
               onMarkerClick={handleMarkerClick}
-              zoom={12}
             />
           )}
         </div>

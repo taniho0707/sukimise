@@ -47,6 +47,27 @@ services:
     depends_on:
       - backend
 
+  discord-bot:
+    image: golang:1.23-alpine
+    ports:
+      - "8082:8082"
+    environment:
+      DATABASE_URL: postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable
+      SUKIMISE_API_URL: http://backend:8080
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+      BOT_PORT: 8082
+      CGO_ENABLED: 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    volumes:
+      - ./discord-bot:/app
+    working_dir: /app
+    command: sh -c "apk add --no-cache git && go mod download && go run cmd/main.go"
+
 volumes:
   postgres_data:
   uploads_data:

@@ -5,7 +5,7 @@ export interface Store {
   latitude: number
   longitude: number
   categories: string[]
-  business_hours: string
+  business_hours: BusinessHoursData
   parking_info: string
   website_url: string
   google_map_url: string
@@ -76,6 +76,27 @@ export interface LocationCoordinates {
   longitude: number
 }
 
+export interface TimeSlot {
+  open_time: string
+  close_time: string
+  last_order_time: string
+}
+
+export interface DaySchedule {
+  is_closed: boolean
+  time_slots: TimeSlot[]
+}
+
+export interface BusinessHoursData {
+  monday: DaySchedule
+  tuesday: DaySchedule
+  wednesday: DaySchedule
+  thursday: DaySchedule
+  friday: DaySchedule
+  saturday: DaySchedule
+  sunday: DaySchedule
+}
+
 export interface BusinessHoursInput {
   day: string
   time: string
@@ -92,7 +113,7 @@ export interface StoreFormData {
   latitude: number
   longitude: number
   categories: string[]
-  business_hours: string
+  business_hours: BusinessHoursData
   parking_info: string
   website_url: string
   google_map_url: string

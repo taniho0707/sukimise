@@ -20,18 +20,18 @@ import (
 
 // StoreRequest represents the request body for store operations
 type StoreRequest struct {
-	Name          string   `json:"name"`
-	Address       string   `json:"address"`
-	Latitude      float64  `json:"latitude"`
-	Longitude     float64  `json:"longitude"`
-	Categories    []string `json:"categories"`
-	BusinessHours string   `json:"business_hours"`
-	ParkingInfo   string   `json:"parking_info"`
-	WebsiteURL    string   `json:"website_url"`
-	GoogleMapURL  string   `json:"google_map_url"`
-	SnsUrls       []string `json:"sns_urls"`
-	Tags          []string `json:"tags"`
-	Photos        []string `json:"photos"`
+	Name          string                   `json:"name"`
+	Address       string                   `json:"address"`
+	Latitude      float64                  `json:"latitude"`
+	Longitude     float64                  `json:"longitude"`
+	Categories    []string                 `json:"categories"`
+	BusinessHours models.BusinessHoursData `json:"business_hours"`
+	ParkingInfo   string                   `json:"parking_info"`
+	WebsiteURL    string                   `json:"website_url"`
+	GoogleMapURL  string                   `json:"google_map_url"`
+	SnsUrls       []string                 `json:"sns_urls"`
+	Tags          []string                 `json:"tags"`
+	Photos        []string                 `json:"photos"`
 }
 
 // ValidateForCreate validates store data for creation
@@ -111,9 +111,8 @@ func (r *StoreRequest) UpdateModel(store *models.Store) {
 	if r.Categories != nil {
 		store.Categories = models.StringArray(r.Categories)
 	}
-	if r.BusinessHours != "" {
-		store.BusinessHours = r.BusinessHours
-	}
+	// Always update business hours since it's a structured object
+	store.BusinessHours = r.BusinessHours
 	if r.ParkingInfo != "" {
 		store.ParkingInfo = r.ParkingInfo
 	}
@@ -198,11 +197,25 @@ func (h *Handler) GetStores(c *gin.Context) {
 		return
 	}
 
+	// Get total count for pagination
+	totalCount, err := h.storeService.GetStoresCount(filter)
+	if err != nil {
+		log.Printf("Failed to get stores count: %v", err)
+		errors.HandleError(c, errors.NewInternalError("Failed to get stores count"))
+		return
+	}
+
+	// Calculate pagination info
+	totalPages := (totalCount + filter.Limit - 1) / filter.Limit
+	currentPage := (filter.Offset / filter.Limit) + 1
+
 	// Prepare metadata
 	meta := &types.MetaInfo{
-		Total:  len(stores),
-		Limit:  filter.Limit,
-		Offset: filter.Offset,
+		Total:       totalCount,
+		Limit:       filter.Limit,
+		Offset:      filter.Offset,
+		Page:        &currentPage,
+		TotalPages:  &totalPages,
 	}
 
 	errors.SendSuccess(c, map[string]interface{}{
@@ -398,7 +411,7 @@ func (h *Handler) ExportStoresCSV(c *gin.Context) {
 			fmt.Sprintf("%.6f", store.Latitude),
 			fmt.Sprintf("%.6f", store.Longitude),
 			sanitizeCSVField(strings.Join(store.Categories, "; ")),
-			sanitizeCSVField(store.BusinessHours),
+			sanitizeCSVField(formatBusinessHoursForCSV(store.BusinessHours)),
 			sanitizeCSVField(store.ParkingInfo),
 			sanitizeCSVField(store.WebsiteURL),
 			sanitizeCSVField(store.GoogleMapURL),
@@ -542,5 +555,64 @@ func sanitizeCSVField(field string) string {
 	field = strings.TrimSpace(field)
 	
 	return field
+}
+
+// formatBusinessHoursForCSV converts BusinessHoursData to CSV-friendly string
+func formatBusinessHoursForCSV(businessHours models.BusinessHoursData) string {
+	var parts []string
+	
+	dayNames := map[string]string{
+		"monday": "月", "tuesday": "火", "wednesday": "水", "thursday": "木",
+		"friday": "金", "saturday": "土", "sunday": "日",
+	}
+	
+	allDays := []struct {
+		key      string
+		schedule models.DaySchedule
+	}{
+		{"monday", businessHours.Monday},
+		{"tuesday", businessHours.Tuesday},
+		{"wednesday", businessHours.Wednesday},
+		{"thursday", businessHours.Thursday},
+		{"friday", businessHours.Friday},
+		{"saturday", businessHours.Saturday},
+		{"sunday", businessHours.Sunday},
+	}
+	
+	// 営業時間の抽出
+	var openSlots []models.TimeSlot
+	var closedDays []string
+	
+	for _, day := range allDays {
+		if day.schedule.IsClosed {
+			closedDays = append(closedDays, dayNames[day.key])
+		} else if len(day.schedule.TimeSlots) > 0 {
+			openSlots = append(openSlots, day.schedule.TimeSlots...)
+		}
+	}
+	
+	// 共通の営業時間を見つける
+	if len(openSlots) > 0 {
+		// 最初のスロットを基準にする
+		firstSlot := openSlots[0]
+		parts = append(parts, fmt.Sprintf("営業時間: %s-%s", firstSlot.OpenTime, firstSlot.CloseTime))
+		
+		if firstSlot.LastOrderTime != "" && firstSlot.LastOrderTime != firstSlot.CloseTime {
+			parts = append(parts, fmt.Sprintf("ラストオーダー: %s", firstSlot.LastOrderTime))
+		}
+	}
+	
+	// 定休日の追加
+	if len(closedDays) > 0 {
+		parts = append(parts, fmt.Sprintf("定休日: %s", strings.Join(closedDays, "、")))
+	} else if len(openSlots) > 0 {
+		parts = append(parts, "定休日: 年中無休")
+	}
+	
+	if len(parts) == 0 {
+		return "営業時間未設定"
+	}
+	
+	return strings.Join(parts, "; ")
 }
 

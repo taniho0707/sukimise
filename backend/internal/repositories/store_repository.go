@@ -132,53 +132,47 @@ func (r *StoreRepository) GetAll(filter *StoreFilter) ([]*models.Store, error) {
 	}
 
 
-	if filter.BusinessDay != "" || filter.BusinessTime != "" {
-		// 営業時間の検索条件を追加
-		businessConditions := []string{}
-		
-		if filter.BusinessDay != "" {
-			// 指定曜日が定休日でないことを確認
-			dayMap := map[string]string{
-				"monday": "月", "tuesday": "火", "wednesday": "水", "thursday": "木",
-				"friday": "金", "saturday": "土", "sunday": "日",
-			}
-			if dayChar, exists := dayMap[filter.BusinessDay]; exists {
-				// 定休日パターンをチェック（より簡潔に）
-				businessConditions = append(businessConditions, fmt.Sprintf(`
-					(business_hours IS NULL OR 
-					 business_hours = '' OR 
-					 business_hours NOT ILIKE $%d)`, argIndex))
-				args = append(args, "%定休日%"+dayChar+"%")
-				argIndex++
-			}
+	// 営業時間検索（JSON形式対応）
+	if filter.BusinessDay != "" && filter.BusinessTime != "" {
+		// 両方指定: 指定曜日の指定時間に営業している店
+		conditions = append(conditions, fmt.Sprintf(`
+			(business_hours IS NOT NULL AND
+			 business_hours->$%d->>'is_closed' != 'true' AND
+			 EXISTS (
+			   SELECT 1 FROM jsonb_array_elements(business_hours->$%d->'time_slots') AS slot
+			   WHERE $%d::time >= (slot->>'open_time')::time 
+			     AND $%d::time <= COALESCE(
+			       NULLIF(slot->>'last_order_time', ''),
+			       slot->>'close_time'
+			     )::time
+			 ))`, argIndex, argIndex+1, argIndex+2, argIndex+3))
+		args = append(args, filter.BusinessDay, filter.BusinessDay, filter.BusinessTime, filter.BusinessTime)
+		argIndex += 4
+	} else if filter.BusinessDay != "" {
+		// 営業日のみ指定: その日が休業日ではない店
+		conditions = append(conditions, fmt.Sprintf(`
+			(business_hours IS NULL OR 
+			 business_hours->$%d->>'is_closed' != 'true')`, argIndex))
+		args = append(args, filter.BusinessDay)
+		argIndex++
+	} else if filter.BusinessTime != "" {
+		// 営業時間のみ指定: 1週間のうちどこか1日でもその時間に営業している店
+		timeConditions := []string{}
+		for _, day := range []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"} {
+			timeConditions = append(timeConditions, fmt.Sprintf(`
+				(business_hours->$%d->>'is_closed' != 'true' AND
+				 EXISTS (
+				   SELECT 1 FROM jsonb_array_elements(business_hours->$%d->'time_slots') AS slot
+				   WHERE $%d::time >= (slot->>'open_time')::time 
+				     AND $%d::time <= COALESCE(
+				       NULLIF(slot->>'last_order_time', ''),
+				       slot->>'close_time'
+				     )::time
+				 ))`, argIndex, argIndex+1, argIndex+2, argIndex+3))
+			args = append(args, day, day, filter.BusinessTime, filter.BusinessTime)
+			argIndex += 4
 		}
-		
-		if filter.BusinessTime != "" {
-			// 営業時間内かどうかをチェック（簡略化）
-			businessConditions = append(businessConditions, fmt.Sprintf(`
-				(business_hours IS NULL OR 
-				 business_hours = '' OR
-				 (business_hours ~ '営業時間[：:\s]*(\d{1,2}):(\d{2})[-～〜](\d{1,2}):(\d{2})' AND
-				  $%d::time >= 
-				    (regexp_replace(business_hours, '.*営業時間[：:\s]*(\d{1,2}):(\d{2})[-～〜](\d{1,2}):(\d{2}).*', '\1:\2'))::time AND
-				  $%d::time <= 
-				    COALESCE(
-				      CASE 
-				        WHEN business_hours ~ 'ラストオーダー[：:\s]*(\d{1,2}):(\d{2})' THEN
-				          (regexp_replace(business_hours, '.*ラストオーダー[：:\s]*(\d{1,2}):(\d{2}).*', '\1:\2'))::time
-				        ELSE 
-				          (regexp_replace(business_hours, '.*営業時間[：:\s]*(\d{1,2}):(\d{2})[-～〜](\d{1,2}):(\d{2}).*', '\3:\4'))::time
-				      END,
-				      (regexp_replace(business_hours, '.*営業時間[：:\s]*(\d{1,2}):(\d{2})[-～〜](\d{1,2}):(\d{2}).*', '\3:\4'))::time
-				    )
-				 ))`, argIndex, argIndex))
-			args = append(args, filter.BusinessTime)
-			argIndex++
-		}
-		
-		if len(businessConditions) > 0 {
-			conditions = append(conditions, "("+strings.Join(businessConditions, " AND ")+")")
-		}
+		conditions = append(conditions, "("+strings.Join(timeConditions, " OR ")+")")
 	}
 
 	query := baseQuery
@@ -221,6 +215,112 @@ func (r *StoreRepository) GetAll(filter *StoreFilter) ([]*models.Store, error) {
 	}
 
 	return stores, nil
+}
+
+// GetCount returns the total count of stores matching the filter
+func (r *StoreRepository) GetCount(filter *StoreFilter) (int, error) {
+	var conditions []string
+	var args []interface{}
+	argIndex := 1
+
+	baseQuery := `SELECT COUNT(*) FROM stores`
+
+	if filter.Name != "" {
+		conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIndex))
+		args = append(args, "%"+filter.Name+"%")
+		argIndex++
+	}
+
+	if len(filter.Categories) > 0 {
+		placeholders := make([]string, len(filter.Categories))
+		for i, cat := range filter.Categories {
+			placeholders[i] = fmt.Sprintf("$%d", argIndex)
+			args = append(args, cat)
+			argIndex++
+		}
+		
+		operator := "?|" // OR演算子
+		if filter.CategoriesOperator == "AND" {
+			operator = "?&" // AND演算子
+		}
+		conditions = append(conditions, fmt.Sprintf("categories %s ARRAY[%s]::text[]", operator, strings.Join(placeholders, ",")))
+	}
+
+	if len(filter.Tags) > 0 {
+		placeholders := make([]string, len(filter.Tags))
+		for i, tag := range filter.Tags {
+			placeholders[i] = fmt.Sprintf("$%d", argIndex)
+			args = append(args, tag)
+			argIndex++
+		}
+		
+		operator := "?&" // AND演算子
+		if filter.TagsOperator == "OR" {
+			operator = "?|" // OR演算子
+		}
+		conditions = append(conditions, fmt.Sprintf("tags %s ARRAY[%s]::text[]", operator, strings.Join(placeholders, ",")))
+	}
+
+	// 近隣検索（緯度・経度・半径指定）
+	if filter.Latitude != nil && filter.Longitude != nil && filter.Radius != nil {
+		conditions = append(conditions, fmt.Sprintf(`
+			(6371 * acos(cos(radians($%d)) * cos(radians(latitude)) * 
+			cos(radians(longitude) - radians($%d)) + sin(radians($%d)) * 
+			sin(radians(latitude)))) <= $%d`, argIndex, argIndex+1, argIndex, argIndex+2))
+		args = append(args, *filter.Latitude, *filter.Longitude, *filter.Latitude, *filter.Radius)
+		argIndex += 3
+	}
+
+	// 営業時間検索（JSON形式対応）
+	if filter.BusinessDay != "" && filter.BusinessTime != "" {
+		// 両方指定: 指定曜日の指定時間に営業している店
+		conditions = append(conditions, fmt.Sprintf(`
+			(business_hours IS NOT NULL AND
+			 business_hours->$%d->>'is_closed' != 'true' AND
+			 EXISTS (
+			   SELECT 1 FROM jsonb_array_elements(business_hours->$%d->'time_slots') AS slot
+			   WHERE $%d::time >= (slot->>'open_time')::time 
+			     AND $%d::time <= COALESCE(
+			       NULLIF(slot->>'last_order_time', ''),
+			       slot->>'close_time'
+			     )::time
+			 ))`, argIndex, argIndex+1, argIndex+2, argIndex+3))
+		args = append(args, filter.BusinessDay, filter.BusinessDay, filter.BusinessTime, filter.BusinessTime)
+		argIndex += 4
+	} else if filter.BusinessDay != "" {
+		// 営業日のみ指定: その日が休業日ではない店
+		conditions = append(conditions, fmt.Sprintf(`
+			(business_hours IS NULL OR 
+			 business_hours->$%d->>'is_closed' != 'true')`, argIndex))
+		args = append(args, filter.BusinessDay)
+		argIndex++
+	} else if filter.BusinessTime != "" {
+		// 営業時間のみ指定: 1週間のうちどこか1日でもその時間に営業している店
+		timeConditions := []string{}
+		for _, day := range []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"} {
+			timeConditions = append(timeConditions, fmt.Sprintf(`
+				(business_hours->$%d->>'is_closed' != 'true' AND
+				 EXISTS (
+				   SELECT 1 FROM jsonb_array_elements(business_hours->$%d->'time_slots') AS slot
+				   WHERE $%d::time >= (slot->>'open_time')::time 
+				     AND $%d::time <= COALESCE(
+				       NULLIF(slot->>'last_order_time', ''),
+				       slot->>'close_time'
+					     )::time
+				 ))`, argIndex, argIndex+1, argIndex+2, argIndex+3))
+			args = append(args, day, day, filter.BusinessTime, filter.BusinessTime)
+			argIndex += 4
+		}
+		conditions = append(conditions, "("+strings.Join(timeConditions, " OR ")+")")
+	}
+
+	if len(conditions) > 0 {
+		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var count int
+	err := r.db.QueryRow(baseQuery, args...).Scan(&count)
+	return count, err
 }
 
 func (r *StoreRepository) Update(store *models.Store) error {

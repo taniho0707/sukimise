@@ -6,6 +6,7 @@ import { z } from 'zod'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useAuth } from '../contexts/AuthContext'
+import { BusinessHoursData } from '../types/store'
 import ImageUpload from '../components/ImageUpload'
 import BusinessHoursInput from '../components/BusinessHoursInput'
 import TagCategoryInput from '../components/TagCategoryInput'
@@ -27,7 +28,6 @@ const storeSchema = z.object({
     return isNaN(num) ? 0 : num;
   }, z.number().min(-180).max(180)),
   categories: z.string(),
-  businessHours: z.string(),
   parkingInfo: z.string(),
   websiteUrl: z.string().url('正しいURLを入力してください').or(z.literal('')),
   googleMapUrl: z.string().url('正しいURLを入力してください').or(z.literal('')),
@@ -44,7 +44,7 @@ interface Store {
   latitude: number
   longitude: number
   categories: string[]
-  business_hours: string
+  business_hours: BusinessHoursData
   parking_info: string
   website_url: string
   google_map_url: string
@@ -52,6 +52,16 @@ interface Store {
   tags: string[]
   photos: string[]
 }
+
+const getDefaultBusinessHours = (): BusinessHoursData => ({
+  monday: { is_closed: false, time_slots: [] },
+  tuesday: { is_closed: false, time_slots: [] },
+  wednesday: { is_closed: false, time_slots: [] },
+  thursday: { is_closed: false, time_slots: [] },
+  friday: { is_closed: false, time_slots: [] },
+  saturday: { is_closed: false, time_slots: [] },
+  sunday: { is_closed: false, time_slots: [] },
+})
 
 const StoreForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -61,6 +71,7 @@ const StoreForm: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [store, setStore] = useState<Store | null>(null)
   const [images, setImages] = useState<string[]>([])
+  const [businessHours, setBusinessHours] = useState<BusinessHoursData>(getDefaultBusinessHours())
 
   const {
     register,
@@ -77,7 +88,6 @@ const StoreForm: React.FC = () => {
       latitude: '',
       longitude: '',
       categories: '',
-      businessHours: '',
       parkingInfo: '',
       websiteUrl: '',
       googleMapUrl: '',
@@ -108,13 +118,17 @@ const StoreForm: React.FC = () => {
           setValue('latitude', storeData.latitude.toString())
           setValue('longitude', storeData.longitude.toString())
           setValue('categories', storeData.categories?.join(', ') || '')
-          setValue('businessHours', storeData.business_hours || '')
           setValue('parkingInfo', storeData.parking_info || '')
           setValue('websiteUrl', storeData.website_url || '')
           setValue('googleMapUrl', storeData.google_map_url || '')
           setValue('snsUrls', storeData.sns_urls?.join(', ') || '')
           setValue('tags', storeData.tags?.join(', ') || '')
           setImages(storeData.photos || [])
+          
+          // BusinessHoursDataを直接設定
+          if (storeData.business_hours) {
+            setBusinessHours(storeData.business_hours)
+          }
         } catch (error: any) {
           console.error('Store fetch error:', error)
           if (error.response?.status === 404) {
@@ -146,7 +160,7 @@ const StoreForm: React.FC = () => {
         latitude: data.latitude,
         longitude: data.longitude,
         categories: data.categories.split(',').map(c => c.trim()).filter(c => c),
-        business_hours: data.businessHours,
+        business_hours: businessHours,
         parking_info: data.parkingInfo,
         website_url: data.websiteUrl,
         google_map_url: data.googleMapUrl,
@@ -346,8 +360,8 @@ const StoreForm: React.FC = () => {
                 営業時間
               </label>
               <BusinessHoursInput
-                value={watch('businessHours') || ''}
-                onChange={(value) => setValue('businessHours', value)}
+                value={businessHours}
+                onChange={setBusinessHours}
                 className="business-hours-input"
               />
             </div>

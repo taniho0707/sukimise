@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import StoreFilter from '../components/StoreFilter'
+import Pagination from '../components/Pagination'
 import './StoreList.css'
 
 interface Store {
@@ -24,9 +25,25 @@ interface FilterState {
   businessTime: string
 }
 
+interface PaginationMeta {
+  total: number
+  page: number
+  limit: number
+  offset: number
+  total_pages: number
+}
+
 const StoreList: React.FC = () => {
   const [stores, setStores] = useState<Store[]>([])
   const [loading, setLoading] = useState(true)
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    total: 0,
+    page: 1,
+    limit: 20,
+    offset: 0,
+    total_pages: 1
+  })
+  const [searchParams, setSearchParams] = useSearchParams()
   // 現在時刻から30分以上後の最短時間を計算
   const getDefaultBusinessDateTime = () => {
     const now = new Date()
@@ -70,13 +87,14 @@ const StoreList: React.FC = () => {
     businessTime: '', // デフォルトは指定なし
   })
 
-  const fetchStores = async (filterParams?: FilterState) => {
+  const fetchStores = async (filterParams?: FilterState, page?: number) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       const currentFilters = filterParams || filters
+      const currentPage = page || pagination.page
       
-      console.log('Fetching stores with filters:', currentFilters)
+      console.log('Fetching stores with filters:', currentFilters, 'page:', currentPage)
       
       if (currentFilters.name) params.append('name', currentFilters.name)
       if (currentFilters.categories.length > 0) {
@@ -90,6 +108,10 @@ const StoreList: React.FC = () => {
       if (currentFilters.businessDay) params.append('business_day', currentFilters.businessDay)
       if (currentFilters.businessTime) params.append('business_time', currentFilters.businessTime)
 
+      // Add pagination parameters
+      params.append('limit', '20')
+      params.append('offset', ((currentPage - 1) * 20).toString())
+
       const url = `/api/v1/stores?${params.toString()}`
       console.log('Request URL:', url)
       
@@ -99,12 +121,42 @@ const StoreList: React.FC = () => {
       // Handle the new API response format
       if (response.data.success && response.data.data && response.data.data.stores) {
         setStores(response.data.data.stores)
+        
+        // Update pagination metadata
+        if (response.data.meta) {
+          setPagination({
+            total: response.data.meta.total || 0,
+            page: response.data.meta.page || currentPage,
+            limit: response.data.meta.limit || 20,
+            offset: response.data.meta.offset || 0,
+            total_pages: response.data.meta.total_pages || 1
+          })
+        }
       } else if (response.data.stores) {
         // Fallback for old format
         setStores(response.data.stores)
+        setPagination({
+          total: response.data.stores.length,
+          page: currentPage,
+          limit: 20,
+          offset: 0,
+          total_pages: 1
+        })
       } else {
         setStores([])
+        setPagination({
+          total: 0,
+          page: currentPage,
+          limit: 20,
+          offset: 0,
+          total_pages: 1
+        })
       }
+
+      // Update URL parameters
+      const urlParams = new URLSearchParams(searchParams)
+      urlParams.set('page', currentPage.toString())
+      setSearchParams(urlParams)
     } catch (error) {
       toast.error('店舗の取得に失敗しました')
       console.error('Error fetching stores:', error)
@@ -114,7 +166,12 @@ const StoreList: React.FC = () => {
   }
 
   useEffect(() => {
-    fetchStores()
+    // URLパラメータからページ番号を取得
+    const pageParam = searchParams.get('page')
+    const initialPage = pageParam ? parseInt(pageParam, 10) : 1
+    
+    setPagination(prev => ({ ...prev, page: initialPage }))
+    fetchStores(undefined, initialPage)
   }, [])
 
   const handleFilterChange = (newFilters: FilterState) => {
@@ -123,7 +180,9 @@ const StoreList: React.FC = () => {
   }
 
   const handleSearch = () => {
-    fetchStores(filters)
+    // 検索時は1ページ目に戻る
+    setPagination(prev => ({ ...prev, page: 1 }))
+    fetchStores(filters, 1)
   }
 
   const handleReset = () => {
@@ -137,7 +196,13 @@ const StoreList: React.FC = () => {
       businessTime: '', // デフォルトは指定なし
     }
     setFilters(resetFilters)
-    fetchStores(resetFilters) // リセット後は自動的に検索実行
+    setPagination(prev => ({ ...prev, page: 1 }))
+    fetchStores(resetFilters, 1) // リセット後は自動的に検索実行
+  }
+
+  const handlePageChange = (page: number) => {
+    setPagination(prev => ({ ...prev, page }))
+    fetchStores(filters, page)
   }
 
   const handleExportCSV = async () => {
@@ -268,6 +333,16 @@ const StoreList: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* Pagination */}
+      {stores.length > 0 && (
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.total_pages}
+          onPageChange={handlePageChange}
+          className="store-list-pagination"
+        />
+      )}
     </div>
   )
 }
