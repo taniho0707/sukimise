@@ -24,51 +24,89 @@ const MapView: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState<Store | null>(null)
   const [showSidebar, setShowSidebar] = useState(false)
-  const [mapCenter, setMapCenter] = useState<[number, number]>([35.6762, 139.6503]) // デフォルト: 東京駅
-  const [mapZoom, setMapZoom] = useState(13)
+  // Load saved map center and display limit from localStorage
+  const loadSavedSettings = () => {
+    const savedCenter = localStorage.getItem('mapCenter')
+    const savedZoom = localStorage.getItem('mapZoom')
+    const savedLimit = localStorage.getItem('displayLimit')
+    
+    // 有効な表示件数オプション
+    const validLimits = [5, 10, 30, 100]
+    const parsedLimit = savedLimit ? parseInt(savedLimit) : 30
+    const limit = validLimits.includes(parsedLimit) ? parsedLimit : 30
+    
+    return {
+      center: savedCenter ? JSON.parse(savedCenter) : [35.6762, 139.6503],
+      zoom: savedZoom ? parseInt(savedZoom) : 13,
+      limit: limit
+    }
+  }
+
+  const savedSettings = loadSavedSettings()
+  const [mapCenter, setMapCenter] = useState<[number, number]>(savedSettings.center)
+  const [mapZoom, setMapZoom] = useState(savedSettings.zoom)
+  const [displayLimit, setDisplayLimit] = useState(savedSettings.limit)
+
+  const fetchStores = async () => {
+    try {
+      setLoading(true)
+      
+      // 地図中心から近い順で店舗を取得
+      const params = new URLSearchParams({
+        latitude: mapCenter[0].toString(),
+        longitude: mapCenter[1].toString(),
+        order_by_proximity: 'true',
+        limit: displayLimit.toString()
+      })
+      
+      const response = await axios.get(`/api/v1/stores?${params.toString()}`)
+      
+      let storesData: Store[] = []
+      // Handle the new API response format
+      if (response.data.success && response.data.data && response.data.data.stores) {
+        storesData = response.data.data.stores
+      } else if (response.data.stores) {
+        // Fallback for old format
+        storesData = response.data.stores
+      } else {
+        storesData = []
+      }
+      
+      setStores(storesData)
+      
+      // URLパラメータから店舗IDを取得して、その店舗を中心に表示
+      const storeId = searchParams.get('store')
+      if (storeId && storesData.length > 0) {
+        const targetStore = storesData.find(store => store.id === storeId)
+        if (targetStore) {
+          setMapCenter([targetStore.latitude, targetStore.longitude])
+          setMapZoom(16) // より詳細なズームレベル
+          setSelectedStore(targetStore)
+          setShowSidebar(true)
+          console.log(`Centering map on store: ${targetStore.name} at ${targetStore.latitude}, ${targetStore.longitude}`)
+        } else {
+          console.warn(`Store with ID ${storeId} not found`)
+        }
+      }
+    } catch (error) {
+      console.error('Stores fetch error:', error)
+      toast.error('店舗データの取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRefreshStores = async () => {
+    // Save current settings to localStorage
+    localStorage.setItem('mapCenter', JSON.stringify(mapCenter))
+    localStorage.setItem('mapZoom', mapZoom.toString())
+    localStorage.setItem('displayLimit', displayLimit.toString())
+    
+    await fetchStores()
+  }
 
   useEffect(() => {
-    const fetchStores = async () => {
-      try {
-        setLoading(true)
-        const response = await axios.get('/api/v1/stores')
-        
-        let storesData: Store[] = []
-        // Handle the new API response format
-        if (response.data.success && response.data.data && response.data.data.stores) {
-          storesData = response.data.data.stores
-        } else if (response.data.stores) {
-          // Fallback for old format
-          storesData = response.data.stores
-        } else {
-          storesData = []
-        }
-        
-        setStores(storesData)
-        
-        // URLパラメータから店舗IDを取得して、その店舗を中心に表示
-        const storeId = searchParams.get('store')
-        if (storeId && storesData.length > 0) {
-          const targetStore = storesData.find(store => store.id === storeId)
-          if (targetStore) {
-            setMapCenter([targetStore.latitude, targetStore.longitude])
-            setMapZoom(16) // より詳細なズームレベル
-            setSelectedStore(targetStore)
-            setShowSidebar(true)
-            console.log(`Centering map on store: ${targetStore.name} at ${targetStore.latitude}, ${targetStore.longitude}`)
-          } else {
-            console.warn(`Store with ID ${storeId} not found`)
-          }
-        }
-      } catch (error) {
-        console.error('Stores fetch error:', error)
-        toast.error('店舗データの取得に失敗しました')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchStores()
+    handleRefreshStores()
   }, [searchParams])
 
   const handleStoreClick = (store: Store) => {
@@ -98,6 +136,26 @@ const MapView: React.FC = () => {
       <div className="map-view-header">
         <h1>店舗マップ</h1>
         <div className="map-controls">
+          <div className="display-limit-control">
+            <label>表示件数:</label>
+            <select
+              value={displayLimit}
+              onChange={(e) => setDisplayLimit(Number(e.target.value))}
+              className="limit-select"
+            >
+              <option value={5}>5件</option>
+              <option value={10}>10件</option>
+              <option value={30}>30件</option>
+              <option value={100}>100件</option>
+            </select>
+            <button
+              onClick={handleRefreshStores}
+              className="btn btn-refresh"
+              disabled={loading}
+            >
+              {loading ? '更新中...' : '更新'}
+            </button>
+          </div>
           <span className="store-count">
             {stores.length}件の店舗
           </span>
@@ -119,6 +177,8 @@ const MapView: React.FC = () => {
             height="calc(100vh - 140px)"
             onStoreClick={handleStoreClick}
             selectedStore={selectedStore}
+            onMapCenterChange={setMapCenter}
+            onMapZoomChange={setMapZoom}
           />
         </div>
 
