@@ -44,9 +44,14 @@ const Layout: React.FC = () => {
                 店舗登録
               </Link>
               {user.role === 'admin' && (
-                <Link to="/admin/viewer-settings" className="nav-link">
-                  閲覧者設定
-                </Link>
+                <>
+                  <Link to="/admin/viewer-settings" className="nav-link">
+                    閲覧者設定
+                  </Link>
+                  <Link to="/admin/category-management" className="nav-link">
+                    カテゴリの編集
+                  </Link>
+                </>
               )}
             </nav>
             <div className="user-menu">

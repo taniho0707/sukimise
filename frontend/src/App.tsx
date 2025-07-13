@@ -17,6 +17,7 @@ import ViewerStoreDetail from '@/pages/ViewerStoreDetail'
 import StoreForm from '@/pages/StoreForm'
 import MapView from '@/pages/MapView'
 import ViewerMapView from '@/pages/ViewerMapView'
+import CategoryManagement from '@/pages/CategoryManagement'
 import ApiTest from '@/pages/ApiTest'
 import Debug from '@/pages/Debug'
 
@@ -39,6 +40,7 @@ function App() {
             <Route path="stores/:id/edit" element={<StoreForm />} />
             <Route path="map" element={<MapView />} />
             <Route path="admin/viewer-settings" element={<AdminViewerSettings />} />
+            <Route path="admin/category-management" element={<CategoryManagement />} />
           </Route>
           
           {/* 閲覧者専用ルート */}

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +35,11 @@ func main() {
 		log.Fatal("Configuration validation failed:", err)
 	}
 
+	// Validate user environment variables
+	if err := validateUserEnvironmentVariables(); err != nil {
+		log.Fatal("User environment validation failed:", err)
+	}
+
 	// Connect to database
 	db, err := database.Connect(cfg.Database.URL)
 	if err != nil {
@@ -50,16 +57,19 @@ func main() {
 	storeRepo := repositories.NewStoreRepository(db)
 	reviewRepo := repositories.NewReviewRepository(db)
 	viewerAuthRepo := repositories.NewViewerAuthRepository(db)
+	categoryCustomizationRepo := repositories.NewCategoryCustomizationRepository(db)
 
 	// Initialize services
 	userService := services.NewUserService(userRepo)
 	storeService := services.NewStoreService(storeRepo)
 	reviewService := services.NewReviewService(reviewRepo)
 	viewerAuthService := services.NewViewerAuthService(viewerAuthRepo)
+	categoryCustomizationService := services.NewCategoryCustomizationService(categoryCustomizationRepo)
 
 	// Initialize handlers
 	handler := handlers.NewHandler(userService, storeService, reviewService)
 	viewerAuthHandler := handlers.NewViewerAuthHandler(viewerAuthService)
+	categoryCustomizationHandler := handlers.NewCategoryCustomizationHandler(categoryCustomizationService, storeService)
 
 	// Set Gin mode based on environment
 	if cfg.IsProduction() {
@@ -72,9 +82,17 @@ func main() {
 	// Add middlewares
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
-	r.Use(middleware.CORS())
+	r.Use(middleware.NewCORSMiddleware(cfg.CORS))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.SecurityHeaders())
+	
+	// CSRF protection
+	csrfConfig := middleware.CSRFConfig{
+		Secret:   cfg.JWT.Secret, // JWT秘密鍵を再利用
+		Secure:   cfg.IsProduction(),
+		SameSite: http.SameSiteStrictMode,
+	}
+	r.Use(middleware.CSRF(csrfConfig))
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -118,6 +136,12 @@ func main() {
 			stores.GET("/:id/reviews", handler.GetReviewsByStore)
 		}
 
+		categoryCustomizations := api.Group("/category-customizations")
+		{
+			categoryCustomizations.GET("", categoryCustomizationHandler.GetCategoryCustomizations)
+			categoryCustomizations.GET("/:categoryName", categoryCustomizationHandler.GetCategoryCustomization)
+		}
+
 		protected := api.Group("")
 		protected.Use(middleware.Auth())
 		{
@@ -156,6 +180,12 @@ func main() {
 				admin.PUT("/viewer-settings", viewerAuthHandler.UpdateViewerSettings)
 				admin.GET("/viewer-history", viewerAuthHandler.GetViewerLoginHistory)
 				admin.POST("/viewer-cleanup", viewerAuthHandler.CleanupExpiredSessions)
+
+				// Category customization management (admin only)
+				admin.POST("/category-customizations", categoryCustomizationHandler.CreateCategoryCustomization)
+				admin.PUT("/category-customizations/:categoryName", categoryCustomizationHandler.UpdateCategoryCustomization)
+				admin.DELETE("/category-customizations/:categoryName", categoryCustomizationHandler.DeleteCategoryCustomization)
+				admin.POST("/category-customizations/sync", categoryCustomizationHandler.SyncCategoriesWithStores)
 			}
 		}
 	}
@@ -193,4 +223,74 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+// validateUserEnvironmentVariables validates that required user environment variables are set
+func validateUserEnvironmentVariables() error {
+	adminUsers := os.Getenv("ADMIN_USERS")
+	editorUsers := os.Getenv("EDITOR_USERS")
+
+	if adminUsers == "" {
+		return fmt.Errorf("ADMIN_USERS environment variable is required. Please set admin users in format: username1:bcrypt_hash1;username2:bcrypt_hash2")
+	}
+
+	if editorUsers == "" {
+		return fmt.Errorf("EDITOR_USERS environment variable is required. Please set editor users in format: username1:bcrypt_hash1;username2:bcrypt_hash2")
+	}
+
+	// Validate admin users format
+	if err := validateUserFormatting("ADMIN_USERS", adminUsers); err != nil {
+		return err
+	}
+
+	// Validate editor users format
+	if err := validateUserFormatting("EDITOR_USERS", editorUsers); err != nil {
+		return err
+	}
+
+	log.Printf("User environment variables validated successfully")
+	return nil
+}
+
+// validateUserFormatting validates the format of user entries
+func validateUserFormatting(envVar, envValue string) error {
+	userEntries := strings.Split(envValue, ";")
+	
+	if len(userEntries) == 0 {
+		return fmt.Errorf("%s must contain at least one user entry", envVar)
+	}
+
+	for i, entry := range userEntries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue // Skip empty entries
+		}
+
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("%s entry %d has invalid format: %s (expected username:bcrypt_hash)", envVar, i+1, entry)
+		}
+
+		username := strings.TrimSpace(parts[0])
+		password := strings.TrimSpace(parts[1])
+
+		if username == "" {
+			return fmt.Errorf("%s entry %d has empty username", envVar, i+1)
+		}
+
+		if password == "" {
+			return fmt.Errorf("%s entry %d has empty password hash", envVar, i+1)
+		}
+
+		// Basic bcrypt hash validation (should start with $2a$, $2b$, or $2y$ and be around 60 chars)
+		if !strings.HasPrefix(password, "$2a$") && !strings.HasPrefix(password, "$2b$") && !strings.HasPrefix(password, "$2y$") {
+			return fmt.Errorf("%s entry %d has invalid bcrypt hash format: %s (should start with $2a$, $2b$, or $2y$)", envVar, i+1, username)
+		}
+
+		if len(password) < 50 || len(password) > 70 {
+			return fmt.Errorf("%s entry %d has invalid bcrypt hash length for user: %s (should be around 60 characters)", envVar, i+1, username)
+		}
+	}
+
+	return nil
 }

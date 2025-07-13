@@ -73,21 +73,8 @@ CREATE INDEX idx_menu_items_review_id ON menu_items(review_id);
 -- Removed unique constraint to allow multiple reviews per user per store
 -- CREATE UNIQUE INDEX idx_reviews_unique_store_user ON reviews(store_id, user_id);
 
--- Insert a default admin user (password: admin123)
-INSERT INTO users (username, email, password, role) VALUES (
-    'admin',
-    'admin@sukimise.com',
-    '$2a$10$v2zOcygvW3kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG', -- bcrypt hash of 'admin123'
-    'admin'
-);
-
--- Insert a default editor user (password: editor123)
-INSERT INTO users (username, email, password, role) VALUES (
-    'editor',
-    'editor@sukimise.com',
-    '$2a$10$3dow5bs6VqqKAfYD2QwMieZYdLCime.DU5wTEccmtpTmopeo9upNC', -- bcrypt hash of 'editor123'
-    'editor'
-);
+-- Default users are now created via environment variables and admin commands
+-- See README.md for instructions on creating users
 
 -- Create viewer password settings table
 CREATE TABLE viewer_settings (

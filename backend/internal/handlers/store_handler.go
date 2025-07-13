@@ -504,6 +504,11 @@ func (h *Handler) parseStoreFilter(c *gin.Context) *repositories.StoreFilter {
 		filter.BusinessTime = strings.TrimSpace(businessTime)
 	}
 
+	// Parse order_by_proximity parameter
+	if orderByProximity := c.Query("order_by_proximity"); orderByProximity == "true" {
+		filter.OrderByProximity = true
+	}
+
 	return filter
 }
 

@@ -47,9 +47,15 @@ func (h *Handler) UploadImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// ファイルタイプを検証
+	// ファイルタイプをContent-Typeで検証
 	if !isAllowedImageType(header.Header.Get("Content-Type")) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed"})
+		return
+	}
+
+	// マジックバイト検証でファイル内容を確認
+	if !validateImageMagicBytes(file) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image file content. File content does not match the expected image format"})
 		return
 	}
 
@@ -152,5 +158,61 @@ func isAllowedImageType(contentType string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// validateImageMagicBytes checks the file's magic bytes to ensure it's a valid image
+func validateImageMagicBytes(file io.ReadSeeker) bool {
+	// ファイルの最初の512バイトを読み取り（魔法の数値検出に十分）
+	buffer := make([]byte, 512)
+	bytesRead, err := file.Read(buffer)
+	if err != nil {
+		return false
+	}
+
+	// ファイルポインタを先頭に戻す
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return false
+	}
+
+	// 実際に読み取ったバイト数でバッファをトリム
+	if bytesRead < 512 {
+		buffer = buffer[:bytesRead]
+	}
+
+	// マジックバイトで画像形式を検証
+	return isValidImageMagicBytes(buffer)
+}
+
+// isValidImageMagicBytes checks if the buffer contains valid image magic bytes
+func isValidImageMagicBytes(buffer []byte) bool {
+	if len(buffer) < 4 {
+		return false
+	}
+
+	// JPEG magic bytes: FF D8 FF
+	if len(buffer) >= 3 && buffer[0] == 0xFF && buffer[1] == 0xD8 && buffer[2] == 0xFF {
+		return true
+	}
+
+	// PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A
+	if len(buffer) >= 8 && 
+		buffer[0] == 0x89 && buffer[1] == 0x50 && buffer[2] == 0x4E && buffer[3] == 0x47 &&
+		buffer[4] == 0x0D && buffer[5] == 0x0A && buffer[6] == 0x1A && buffer[7] == 0x0A {
+		return true
+	}
+
+	// GIF magic bytes: "GIF87a" or "GIF89a"
+	if len(buffer) >= 6 && string(buffer[0:3]) == "GIF" && 
+		(string(buffer[0:6]) == "GIF87a" || string(buffer[0:6]) == "GIF89a") {
+		return true
+	}
+
+	// WebP magic bytes: "RIFF" followed by "WEBP" at offset 8
+	if len(buffer) >= 12 && string(buffer[0:4]) == "RIFF" && string(buffer[8:12]) == "WEBP" {
+		return true
+	}
+
 	return false
 }

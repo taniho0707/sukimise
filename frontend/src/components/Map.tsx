@@ -1,7 +1,9 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState, useId } from 'react'
 import L from 'leaflet'
+import axios from 'axios'
 import 'leaflet/dist/leaflet.css'
 import './Map.css'
+import { API_BASE_URL } from '@/config'
 
 // Leafletのデフォルトアイコンの問題を修正
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -18,6 +20,16 @@ interface Store {
   latitude: number
   longitude: number
   categories: string[]
+  tags: string[]
+}
+
+interface CategoryCustomization {
+  id: string
+  category_name: string
+  icon?: string
+  color?: string
+  created_at: string
+  updated_at: string
 }
 
 interface Marker {
@@ -35,6 +47,8 @@ interface MapProps {
   onStoreClick?: (store: Store) => void
   onMarkerClick?: (marker: Marker) => void
   selectedStore?: Store | null
+  onMapCenterChange?: (center: [number, number]) => void
+  onMapZoomChange?: (zoom: number) => void
 }
 
 const Map: React.FC<MapProps> = ({
@@ -45,35 +59,121 @@ const Map: React.FC<MapProps> = ({
   height = '400px',
   onStoreClick,
   onMarkerClick,
-  selectedStore
+  selectedStore,
+  onMapCenterChange,
+  onMapZoomChange
 }) => {
+  const mapId = useId()
   const mapRef = useRef<L.Map | null>(null)
   const markersRef = useRef<L.Marker[]>([])
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const [categoryCustomizations, setCategoryCustomizations] = useState<CategoryCustomization[]>([])
+
+  // Fetch category customizations
+  useEffect(() => {
+    const fetchCategoryCustomizations = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/api/v1/category-customizations`)
+        const responseData = response.data
+        
+        let customizationsData = []
+        if (responseData.success && responseData.data && responseData.data.category_customizations) {
+          customizationsData = responseData.data.category_customizations
+        } else if (Array.isArray(responseData.data)) {
+          customizationsData = responseData.data
+        } else {
+          customizationsData = []
+        }
+        
+        setCategoryCustomizations(customizationsData)
+      } catch (error) {
+        console.error('Error fetching category customizations:', error)
+        // Continue with empty customizations
+        setCategoryCustomizations([])
+      }
+    }
+
+    fetchCategoryCustomizations()
+  }, [])
+
+  // Get the best category customization for a store
+  const getStoreCustomization = (store: Store): { icon: string; color: string } => {
+    // Find the first category that has a customization
+    for (const category of store.categories || []) {
+      const customization = categoryCustomizations.find(cc => cc.category_name === category)
+      if (customization && customization.icon && customization.color) {
+        return {
+          icon: customization.icon,
+          color: customization.color
+        }
+      }
+    }
+    
+    // Fallback to store name first character and default color
+    return {
+      icon: store.name.charAt(0),
+      color: '#007bff'
+    }
+  }
 
   // 地図の初期化
   useEffect(() => {
-    if (!mapContainerRef.current) return
+    const initializeMap = () => {
+      if (!mapContainerRef.current) return
 
-    // 既存の地図があれば削除
-    if (mapRef.current) {
-      mapRef.current.remove()
+      // 既存の地図があれば削除
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
+
+      // centerの型を統一
+      const mapCenter: [number, number] = Array.isArray(center) 
+        ? center 
+        : [center.lat, center.lng]
+      
+      try {
+        // 地図を作成
+        const map = L.map(mapContainerRef.current).setView(mapCenter, zoom)
+    
+        // OpenStreetMapタイルレイヤーを追加
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map)
+
+        // 地図の中心とズーム変更を親コンポーネントに通知
+        map.on('moveend', () => {
+          const center = map.getCenter()
+          const currentZoom = map.getZoom()
+          if (onMapCenterChange) {
+            onMapCenterChange([center.lat, center.lng])
+          }
+          if (onMapZoomChange) {
+            onMapZoomChange(currentZoom)
+          }
+        })
+
+        mapRef.current = map
+      } catch (error) {
+        console.error('Error initializing map:', error)
+      }
     }
 
-    // centerの型を統一
-    const mapCenter: [number, number] = Array.isArray(center) 
-      ? center 
-      : [center.lat, center.lng]
-    
-    // 地図を作成
-    const map = L.map(mapContainerRef.current).setView(mapCenter, zoom)
-    
-    // OpenStreetMapタイルレイヤーを追加
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map)
-
-    mapRef.current = map
+    // DOM要素が確実に存在することを確認してから初期化
+    if (mapContainerRef.current) {
+      const container = mapContainerRef.current
+      if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+        initializeMap()
+      } else {
+        // コンテナのサイズが0の場合は少し待つ
+        const timer = setTimeout(() => {
+          if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+            initializeMap()
+          }
+        }, 100)
+        return () => clearTimeout(timer)
+      }
+    }
 
     return () => {
       if (mapRef.current) {
@@ -97,14 +197,15 @@ const Map: React.FC<MapProps> = ({
     if (stores && Array.isArray(stores) && stores.length > 0) {
       stores.forEach(store => {
         const isSelected = selectedStore?.id === store.id
+        const customization = getStoreCustomization(store)
       
       // カスタムアイコンを作成
       const icon = L.divIcon({
         className: `custom-marker ${isSelected ? 'selected' : ''}`,
         html: `
-          <div class="marker-pin ${isSelected ? 'selected' : ''}">
+          <div class="marker-pin ${isSelected ? 'selected' : ''}" style="background-color: ${customization.color};">
             <div class="marker-content">
-              <span class="marker-text">${store.name.charAt(0)}</span>
+              <span class="marker-text">${customization.icon}</span>
             </div>
           </div>
         `,
@@ -122,6 +223,7 @@ const Map: React.FC<MapProps> = ({
           <h3>${store.name}</h3>
           <p><strong>住所:</strong> ${store.address}</p>
           ${store.categories.length > 0 ? `<p><strong>カテゴリ:</strong> ${store.categories.join(', ')}</p>` : ''}
+          ${store.tags && store.tags.length > 0 ? `<p><strong>タグ:</strong> ${store.tags.join(', ')}</p>` : ''}
           <button class="popup-detail-btn" data-store-id="${store.id}">詳細を見る</button>
         </div>
       `
@@ -196,7 +298,7 @@ const Map: React.FC<MapProps> = ({
     return () => {
       document.removeEventListener('click', handlePopupButtonClick)
     }
-  }, [stores, selectedStore, onStoreClick])
+  }, [stores, selectedStore, onStoreClick, categoryCustomizations])
 
   // 選択された店舗にフォーカス
   useEffect(() => {
@@ -208,9 +310,10 @@ const Map: React.FC<MapProps> = ({
   return (
     <div className="map-container">
       <div
+        id={mapId}
         ref={mapContainerRef}
         className="map"
-        style={{ height }}
+        style={{ height, width: '100%', minHeight: '300px' }}
       />
     </div>
   )

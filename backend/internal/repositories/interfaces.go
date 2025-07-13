@@ -47,3 +47,11 @@ type ViewerAuthRepositoryInterface interface {
 	CleanupExpiredSessions() error
 	GetLoginHistory(limit, offset int) ([]*models.ViewerLoginHistory, error)
 }
+
+type CategoryCustomizationRepositoryInterface interface {
+	Create(categoryCustomization *models.CategoryCustomization) error
+	GetByCategoryName(categoryName string) (*models.CategoryCustomization, error)
+	GetAll() ([]*models.CategoryCustomization, error)
+	Update(categoryCustomization *models.CategoryCustomization) error
+	Delete(categoryName string) error
+}

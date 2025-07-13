@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15
+    image: postgis/postgis:15-3.4
     environment:
       POSTGRES_DB: sukimise
       POSTGRES_USER: sukimise_user
@@ -24,12 +24,15 @@ services:
       PORT: 8080
       HOST: 0.0.0.0
       CGO_ENABLED: 0
+      ADMIN_USERS: 'admin:$$2a$$10$$v2zOcygvW3kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG;admin2:$$2a$$10$$K8Zx9J5Qv3kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG'
+      EDITOR_USERS: 'editor:$$2a$$10$$3dow5bs6VqqKAfYD2QwMieZYdLCime.DU5wTEccmtpTmopeo9upNC;editor2:$$2a$$10$$H7Yw8K4Pv2kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG'
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
+      - ./.env:/app/.env
     working_dir: /app
     command: sh -c "apk add --no-cache git && go mod download && go run cmd/server/main.go"
 

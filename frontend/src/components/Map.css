@@ -7,7 +7,10 @@
 
 .map {
   width: 100%;
+  height: 100%;
+  min-height: 300px;
   z-index: 1;
+  position: relative;
 }
 
 /* カスタムマーカーのスタイル */
@@ -20,7 +23,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50% 50% 50% 0;
-  background: #007bff;
+  background: #007bff; /* Default fallback color */
   position: relative;
   transform: rotate(-45deg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
@@ -29,13 +32,14 @@
 }
 
 .marker-pin:hover {
-  background: #0056b3;
   transform: rotate(-45deg) scale(1.1);
+  filter: brightness(0.9); /* Darken the color on hover instead of hardcoded color */
 }
 
 .marker-pin.selected {
-  background: #dc3545;
   transform: rotate(-45deg) scale(1.2);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  filter: brightness(1.1); /* Brighten selected markers */
 }
 
 .marker-content {

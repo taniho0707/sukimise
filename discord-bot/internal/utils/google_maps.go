@@ -88,6 +88,12 @@ func ExtractStoreInfoFromURL(mapURL string) (*models.StoreCreateRequest, error) 
 		}
 	}
 	
+	// Remove "日本、" prefix from address if present
+	if strings.HasPrefix(address, "日本、") {
+		address = strings.TrimPrefix(address, "日本、")
+		fmt.Printf("DEBUG: Removed '日本、' prefix from address. New address: '%s'\n", address)
+	}
+	
 	// Use page store name if URL name is invalid or empty
 	fmt.Printf("DEBUG: Page store name: '%s'\n", pageStoreName)
 	fmt.Printf("DEBUG: Current store name: '%s'\n", storeName)

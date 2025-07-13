@@ -65,6 +65,7 @@ type StoreFilter struct {
 	Radius            *float64
 	BusinessDay       string
 	BusinessTime      string
+	OrderByProximity  bool // Order by distance from latitude/longitude
 	Limit             int
 	Offset            int
 }
@@ -180,7 +181,14 @@ func (r *StoreRepository) GetAll(filter *StoreFilter) ([]*models.Store, error) {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	query += " ORDER BY created_at DESC"
+	// Add ordering
+	if filter.OrderByProximity && filter.Latitude != nil && filter.Longitude != nil {
+		query += fmt.Sprintf(" ORDER BY ST_Distance(ST_Point(longitude, latitude)::geography, ST_Point($%d, $%d)::geography) ASC", argIndex, argIndex+1)
+		args = append(args, *filter.Longitude, *filter.Latitude)
+		argIndex += 2
+	} else {
+		query += " ORDER BY created_at DESC"
+	}
 
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argIndex)

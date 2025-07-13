@@ -51,7 +51,9 @@ func (p *PaginationRequest) GetOffset() int {
 
 // CORSConfig represents CORS configuration
 type CORSConfig struct {
-	AllowOrigins []string `json:"allow_origins"`
-	AllowMethods []string `json:"allow_methods"`
-	AllowHeaders []string `json:"allow_headers"`
+	AllowedOrigins   []string `json:"allowed_origins" yaml:"allowed_origins"`
+	AllowedMethods   []string `json:"allowed_methods" yaml:"allowed_methods"`
+	AllowedHeaders   []string `json:"allowed_headers" yaml:"allowed_headers"`
+	AllowCredentials bool     `json:"allow_credentials" yaml:"allow_credentials"`
+	MaxAge           int      `json:"max_age" yaml:"max_age"`
 }
