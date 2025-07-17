@@ -102,7 +102,7 @@ func main() {
 			dbStatus = "error"
 			c.JSON(503, types.APIResponse{
 				Success: false,
-				Error: &types.APIError{
+				Error: &types.ErrorInfo{
 					Code:    "HEALTH_CHECK_FAILED",
 					Message: "Database connection failed",
 					Details: err.Error(),

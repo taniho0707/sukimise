@@ -96,7 +96,7 @@ func main() {
 
 		// Check Discord connection
 		discordStatus := "connected"
-		if dg.State == nil || !dg.State.Ready {
+		if dg.State == nil {
 			discordStatus = "disconnected"
 		}
 
