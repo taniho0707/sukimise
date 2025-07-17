@@ -16,16 +16,19 @@ services:
 
   backend:
     image: golang:1.23-alpine
-    ports:
-      - "8080:8080"
+    # Backend is now internal only - no external port exposure
+    # Access via frontend proxy or direct container access for debugging
+    expose:
+      - "${PORT:-8080}"
     environment:
-      DATABASE_URL: postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable
-      JWT_SECRET: your-jwt-secret-key
-      PORT: 8080
+      DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
+      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-key}
+      PORT: ${PORT:-8080}
       HOST: 0.0.0.0
       CGO_ENABLED: 0
-      ADMIN_USERS: 'admin:$$2a$$10$$v2zOcygvW3kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG;admin2:$$2a$$10$$K8Zx9J5Qv3kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG'
-      EDITOR_USERS: 'editor:$$2a$$10$$3dow5bs6VqqKAfYD2QwMieZYdLCime.DU5wTEccmtpTmopeo9upNC;editor2:$$2a$$10$$H7Yw8K4Pv2kFIAWDVzsEeeQmTE0.dMWOtL7A1qr9eyRwTNMzWKdZG'
+      ADMIN_USERS: ${ADMIN_USERS}
+      EDITOR_USERS: ${EDITOR_USERS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,27 +42,28 @@ services:
   frontend:
     image: node:18-alpine
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
     environment:
-      VITE_API_BASE_URL: http://localhost:8080
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+      VITE_PORT: ${FRONTEND_PORT:-3000}
     volumes:
       - ./frontend:/app
       - /app/node_modules
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port ${FRONTEND_PORT:-3000}"
     depends_on:
       - backend
 
   discord-bot:
     image: golang:1.23-alpine
     ports:
-      - "8082:8082"
+      - "${BOT_PORT:-8082}:${BOT_PORT:-8082}"
     environment:
-      DATABASE_URL: postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable
-      SUKIMISE_API_URL: http://backend:8080
+      DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
+      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:8080}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
-      BOT_PORT: 8082
+      BOT_PORT: ${BOT_PORT:-8082}
       CGO_ENABLED: 0
     depends_on:
       postgres:
