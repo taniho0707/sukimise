@@ -21,8 +21,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     # Backend is internal only in production
-    expose:
-      - "${BACKEND_PORT:-8080}"
+    # expose:
+    #   - "${BACKEND_PORT:-8080}"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
@@ -46,23 +46,24 @@ services:
       retries: 3
 
   discord-bot:
-    build:
-      context: ./discord-bot
-      dockerfile: Dockerfile
+    image: golang:1.23-alpine
     ports:
       - "${BOT_PORT:-8082}:${BOT_PORT:-8082}"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SUKIMISE_API_URL: http://backend:${BACKEND_PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
+      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:8080}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       BOT_PORT: ${BOT_PORT:-8082}
+      CGO_ENABLED: 0
       ENVIRONMENT: production
     depends_on:
       postgres:
         condition: service_healthy
       backend:
         condition: service_healthy
+    volumes:
+      - ./discord-bot:/app
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${BOT_PORT:-8082}/health"]
@@ -94,11 +95,3 @@ services:
 volumes:
   postgres_data:
   uploads_data:
-
-# Production Network Configuration
-networks:
-  default:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
