@@ -58,7 +58,7 @@ const ViewerMapView: React.FC = () => {
   const savedSettings = loadSavedSettings()
   const [mapCenter, setMapCenter] = useState<[number, number]>(savedSettings.center)
   const [mapZoom, setMapZoom] = useState(savedSettings.zoom)
-  const [displayLimit, setDisplayLimit] = useState(savedSettings.limit)
+  // const [displayLimit] = useState(savedSettings.limit) - not used
   
   // 現在時刻から30分以上後の最短時間を計算
   const getCurrentPlus30MinTime = () => {
@@ -83,59 +83,6 @@ const ViewerMapView: React.FC = () => {
     businessTime: getCurrentPlus30MinTime()
   })
 
-  const fetchStoresByProximity = async () => {
-    try {
-      setLoading(true)
-      
-      // Save current settings to localStorage
-      localStorage.setItem('viewerMapCenter', JSON.stringify(mapCenter))
-      localStorage.setItem('viewerMapZoom', mapZoom.toString())
-      localStorage.setItem('viewerDisplayLimit', displayLimit.toString())
-      
-      // 地図中心から近い順で店舗を取得
-      const params = new URLSearchParams({
-        latitude: mapCenter[0].toString(),
-        longitude: mapCenter[1].toString(),
-        order_by_proximity: 'true',
-        limit: displayLimit.toString()
-      })
-      
-      const response = await axios.get(`${API_BASE_URL}/api/v1/stores?${params.toString()}`)
-      const responseData = response.data
-      
-      // レスポンス構造を確認
-      let storesData = []
-      if (responseData.success && responseData.data && responseData.data.stores) {
-        storesData = responseData.data.stores
-      } else if (Array.isArray(responseData.data)) {
-        storesData = responseData.data
-      } else if (Array.isArray(responseData)) {
-        storesData = responseData
-      }
-      
-      setStores(storesData)
-      
-      // URLパラメータから店舗IDを取得して、その店舗を中心に表示
-      const storeId = searchParams.get('store')
-      if (storeId && storesData.length > 0) {
-        const targetStore = storesData.find(store => store.id === storeId)
-        if (targetStore) {
-          setMapCenter([targetStore.latitude, targetStore.longitude])
-          setMapZoom(16) // より詳細なズームレベル
-          setSelectedStore(targetStore)
-          setShowSidebar(true)
-          console.log(`Centering map on store: ${targetStore.name} at ${targetStore.latitude}, ${targetStore.longitude}`)
-        } else {
-          console.warn(`Store with ID ${storeId} not found`)
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching stores:', error)
-      toast.error('店舗の取得に失敗しました')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const fetchStores = async (filters: FilterState) => {
     try {
@@ -179,7 +126,7 @@ const ViewerMapView: React.FC = () => {
       // URLパラメータから店舗IDを取得して、その店舗を中心に表示
       const storeId = searchParams.get('store')
       if (storeId && storesData.length > 0) {
-        const targetStore = storesData.find(store => store.id === storeId)
+        const targetStore = storesData.find((store: any) => store.id === storeId)
         if (targetStore) {
           setMapCenter([targetStore.latitude, targetStore.longitude])
           setMapZoom(16) // より詳細なズームレベル
@@ -214,7 +161,7 @@ const ViewerMapView: React.FC = () => {
     store
   }))
 
-  const handleMarkerClick = (marker: Marker) => {
+  const handleMarkerClick = (marker: any) => {
     setSelectedStore(marker.store)
     setShowSidebar(true)
   }

@@ -23,8 +23,6 @@ const StoreDetail: React.FC = () => {
   const [showReviewForm, setShowReviewForm] = useState(false)
   const [editingReview, setEditingReview] = useState<Review | null>(null)
   const [userLatestRating, setUserLatestRating] = useState<number | undefined>()
-  const [currentUserReviews, setCurrentUserReviews] = useState<Review[]>([])
-
   useEffect(() => {
     if (!id) {
       navigate('/stores')
@@ -53,8 +51,8 @@ const StoreDetail: React.FC = () => {
         
         // 現在のユーザーのレビューを特定
         if (user) {
-          const userReviews = reviewsData.filter((review: Review) => review.user_id === user.id)
-          setCurrentUserReviews(userReviews)
+          // const userReviews = reviewsData.filter((review: Review) => review.user_id === user.id)
+          // setCurrentUserReviews(userReviews) - removed variable
         }
       } catch (error) {
         console.error('Reviews fetch error:', error)
@@ -135,8 +133,8 @@ const StoreDetail: React.FC = () => {
           setReviews(reviewsData)
           
           if (user) {
-            const userReviews = reviewsData.filter((review: Review) => review.user_id === user.id)
-            setCurrentUserReviews(userReviews)
+            // const userReviews = reviewsData.filter((review: Review) => review.user_id === user.id)
+            // setCurrentUserReviews(userReviews) - removed variable
           }
         } catch (error) {
           console.error('Reviews reload error:', error)
@@ -166,7 +164,7 @@ const StoreDetail: React.FC = () => {
       
       // レビューリストから削除
       setReviews(prev => prev.filter(review => review.id !== reviewId))
-      setCurrentUserReviews(prev => prev.filter(review => review.id !== reviewId))
+      // setCurrentUserReviews(prev => prev.filter(review => review.id !== reviewId)) - removed variable
     } catch (error: any) {
       console.error('Review delete error:', error)
       toast.error('レビューの削除に失敗しました')
@@ -191,7 +189,7 @@ const StoreDetail: React.FC = () => {
         {/* 店舗ヘッダー */}
         <StoreHeader
           store={store}
-          canEdit={canEdit()}
+          canEdit={canEdit() || false}
           onEdit={handleEdit}
           onDelete={handleDelete}
         />
@@ -221,7 +219,13 @@ const StoreDetail: React.FC = () => {
             <div className="review-form-section">
               <ReviewForm
                 storeId={store.id}
-                existingReview={editingReview}
+                existingReview={editingReview ? {
+                  ...editingReview,
+                  comment: editingReview.comment || '',
+                  visit_date: editingReview.visit_date || undefined,
+                  payment_amount: editingReview.payment_amount || undefined,
+                  food_notes: editingReview.food_notes || undefined
+                } : undefined}
                 onSuccess={handleReviewSubmit}
                 onCancel={() => {
                   setShowReviewForm(false)

@@ -225,7 +225,7 @@ const MapView: React.FC = () => {
                     <div className="info-item">
                       <strong>営業時間</strong>
                       <div className="business-hours">
-                        <SafeBusinessHoursDisplay businessHours={selectedStore.business_hours} />
+                        <SafeBusinessHoursDisplay businessHours={typeof selectedStore.business_hours === 'string' ? JSON.parse(selectedStore.business_hours) : selectedStore.business_hours} />
                       </div>
                     </div>
                   )}

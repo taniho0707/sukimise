@@ -78,15 +78,14 @@ const StoreForm: React.FC = () => {
     handleSubmit,
     formState: { errors },
     setValue,
-    reset,
     watch
   } = useForm<StoreFormData>({
     resolver: zodResolver(storeSchema),
     defaultValues: {
       name: '',
       address: '',
-      latitude: '',
-      longitude: '',
+      latitude: 0,
+      longitude: 0,
       categories: '',
       parkingInfo: '',
       websiteUrl: '',
@@ -198,11 +197,11 @@ const StoreForm: React.FC = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setValue('latitude', position.coords.latitude.toString())
-          setValue('longitude', position.coords.longitude.toString())
+          setValue('latitude', position.coords.latitude)
+          setValue('longitude', position.coords.longitude)
           toast.success('現在位置を取得しました')
         },
-        (error) => {
+        () => {
           toast.error('位置情報の取得に失敗しました')
         }
       )
@@ -226,8 +225,8 @@ const StoreForm: React.FC = () => {
       if (data && data.length > 0) {
         const lat = parseFloat(data[0].lat)
         const lon = parseFloat(data[0].lon)
-        setValue('latitude', lat.toString())
-        setValue('longitude', lon.toString())
+        setValue('latitude', lat)
+        setValue('longitude', lon)
         toast.success('住所から位置情報を取得しました')
       } else {
         toast.error('住所から位置情報を取得できませんでした')
@@ -248,7 +247,7 @@ const StoreForm: React.FC = () => {
           )}
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="store-form">
+        <form onSubmit={handleSubmit(onSubmit as any)} className="store-form">
           {/* 基本情報セクション */}
           <section className="form-section">
             <h2>基本情報</h2>

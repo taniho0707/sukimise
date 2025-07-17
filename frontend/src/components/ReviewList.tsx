@@ -36,9 +36,6 @@ const ReviewList: React.FC<ReviewListProps> = ({
   showActions = true,
   readOnly = false
 }) => {
-  const renderStars = (rating: number) => {
-    return '★'.repeat(rating) + '☆'.repeat(5 - rating)
-  }
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null

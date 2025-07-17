@@ -1,5 +1,5 @@
 import React from 'react'
-import { BusinessHoursData, DaySchedule } from '../types/store'
+import { BusinessHoursData } from '../types/store'
 
 interface SafeBusinessHoursDisplayProps {
   businessHours: BusinessHoursData

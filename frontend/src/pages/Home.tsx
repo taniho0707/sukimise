@@ -28,8 +28,8 @@ const Home: React.FC = () => {
         if (storesData && typeof storesData === 'object') {
           if (Array.isArray(storesData)) {
             stores = storesData
-          } else if (storesData.stores && Array.isArray(storesData.stores)) {
-            stores = storesData.stores
+          } else if ((storesData as any).stores && Array.isArray((storesData as any).stores)) {
+            stores = (storesData as any).stores
           }
         }
         const totalStores = stores.length
@@ -49,8 +49,8 @@ const Home: React.FC = () => {
             if (reviewsData && typeof reviewsData === 'object') {
               if (Array.isArray(reviewsData)) {
                 reviews = reviewsData
-              } else if (reviewsData.reviews && Array.isArray(reviewsData.reviews)) {
-                reviews = reviewsData.reviews
+              } else if ((reviewsData as any).reviews && Array.isArray((reviewsData as any).reviews)) {
+                reviews = (reviewsData as any).reviews
               }
             }
             userReviews = reviews.length

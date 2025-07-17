@@ -54,43 +54,12 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
   const [filters, setFilters] = useState<FilterState>(initialFilters)
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
-  const [isExpanded, setIsExpanded] = useState(true)
 
   // initialFiltersが変更された場合にfiltersを更新
   useEffect(() => {
     setFilters(initialFilters)
   }, [initialFilters])
 
-  // 現在時刻から30分以上後の最短時間を取得
-  const getDefaultBusinessDateTime = () => {
-    const now = new Date()
-    const currentMinutes = now.getMinutes()
-    const currentHour = now.getHours()
-    
-    // 30分単位に丸める + 30分追加
-    let targetMinutes = currentMinutes < 30 ? 30 : 0
-    let targetHour = currentMinutes < 30 ? currentHour : currentHour + 1
-    
-    // さらに30分追加
-    if (targetMinutes === 30) {
-      targetMinutes = 0
-      targetHour += 1
-    } else {
-      targetMinutes = 30
-    }
-    
-    // 24時間を超えた場合は翌日
-    if (targetHour >= 24) {
-      targetHour = targetHour % 24
-      now.setDate(now.getDate() + 1)
-    }
-    
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-    const targetDay = dayNames[now.getDay()]
-    const targetTime = `${targetHour.toString().padStart(2, '0')}:${targetMinutes.toString().padStart(2, '0')}`
-    
-    return { day: targetDay, time: targetTime }
-  }
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -117,7 +86,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
         setAvailableTags(tags)
 
         // 初回読み込み時のデフォルト値設定は行わない（指定なしのまま）
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to fetch filter options:', error)
         if (error.response) {
           console.error('Response status:', error.response.status)
@@ -152,7 +121,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
   }
 
   const handleReset = () => {
-    onReset()
+    onReset?.()
   }
 
 
@@ -171,7 +140,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
               type="text"
               value={filters.name}
               onChange={(e) => handleFilterChange({ name: e.target.value })}
-              onKeyPress={(e) => e.key === 'Enter' && onSearch()}
+              onKeyPress={(e) => e.key === 'Enter' && onSearch?.()}
               placeholder="店舗名で検索..."
               className="form-input"
             />

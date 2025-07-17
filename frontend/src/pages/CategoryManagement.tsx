@@ -284,7 +284,7 @@ const CategoryManagement: React.FC = () => {
                 <button 
                   type="submit" 
                   className="btn btn-primary"
-                  disabled={!formData.category_name.trim() || (formData.icon && !validateIcon(formData.icon)) || (formData.color && !validateColor(formData.color))}
+                  disabled={Boolean(!formData.category_name.trim() || (formData.icon && !validateIcon(formData.icon)) || (formData.color && !validateColor(formData.color)))}
                 >
                   {editingCategory ? '更新' : '作成'}
                 </button>

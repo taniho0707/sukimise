@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BusinessHoursData, DaySchedule, TimeSlot } from '../types/store'
+import { BusinessHoursData, TimeSlot } from '../types/store'
 
 interface BusinessHoursInputProps {
   value: BusinessHoursData

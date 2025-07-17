@@ -1,55 +1,56 @@
 import '@testing-library/jest-dom'
-import { vi } from 'vitest'
 
 // Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
+class MockIntersectionObserver {
   constructor() {}
   disconnect() {}
   observe() {}
   unobserve() {}
 }
+(globalThis as any).IntersectionObserver = MockIntersectionObserver
 
 // Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
+class MockResizeObserver {
   constructor() {}
   disconnect() {}
   observe() {}
   unobserve() {}
 }
+(globalThis as any).ResizeObserver = MockResizeObserver
 
 // Mock URL.createObjectURL
 Object.defineProperty(URL, 'createObjectURL', {
   writable: true,
-  value: vi.fn(() => 'mock-url'),
+  value: () => 'mock-url',
 })
 
 // Mock URL.revokeObjectURL
 Object.defineProperty(URL, 'revokeObjectURL', {
   writable: true,
-  value: vi.fn(),
+  value: () => {},
 })
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation(query => ({
+  value: (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: vi.fn(), // deprecated
-    removeListener: vi.fn(), // deprecated
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
+    addListener: () => {}, // deprecated
+    removeListener: () => {}, // deprecated
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => {},
+  }),
 })
 
 // Mock localStorage
 const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+  clear: () => {},
 }
 Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
@@ -57,10 +58,10 @@ Object.defineProperty(window, 'localStorage', {
 
 // Mock sessionStorage
 const sessionStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+  clear: () => {},
 }
 Object.defineProperty(window, 'sessionStorage', {
   value: sessionStorageMock,

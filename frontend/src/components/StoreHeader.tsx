@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import { BusinessHoursData } from '../types/store'
 
 interface Store {
   id: string
@@ -8,7 +9,7 @@ interface Store {
   latitude: number
   longitude: number
   categories: string[]
-  business_hours: string
+  business_hours: BusinessHoursData | string
   parking_info: string
   website_url: string
   google_map_url: string
@@ -22,9 +23,9 @@ interface Store {
 
 interface StoreHeaderProps {
   store: Store
-  canEdit: boolean
-  onEdit: () => void
-  onDelete: () => void
+  canEdit?: boolean
+  onEdit?: () => void
+  onDelete?: () => void
 }
 
 const StoreHeader: React.FC<StoreHeaderProps> = ({ store, canEdit, onEdit, onDelete }) => {

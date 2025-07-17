@@ -21,6 +21,8 @@ interface FilterState {
   categoriesOperator: string
   tags: string[]
   tagsOperator: string
+  priceMin: number
+  priceMax: number
   businessDay: string
   businessTime: string
 }
@@ -45,37 +47,6 @@ const StoreList: React.FC = () => {
   })
   const [searchParams, setSearchParams] = useSearchParams()
   // 現在時刻から30分以上後の最短時間を計算
-  const getDefaultBusinessDateTime = () => {
-    const now = new Date()
-    const currentMinutes = now.getMinutes()
-    const currentHour = now.getHours()
-    
-    // 30分単位に丸める + 30分追加
-    let targetMinutes = currentMinutes < 30 ? 30 : 0
-    let targetHour = currentMinutes < 30 ? currentHour : currentHour + 1
-    
-    // さらに30分追加
-    if (targetMinutes === 30) {
-      targetMinutes = 0
-      targetHour += 1
-    } else {
-      targetMinutes = 30
-    }
-    
-    // 24時間を超えた場合は翌日
-    if (targetHour >= 24) {
-      targetHour = targetHour % 24
-      now.setDate(now.getDate() + 1)
-    }
-    
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-    const targetDay = dayNames[now.getDay()]
-    const targetTime = `${targetHour.toString().padStart(2, '0')}:${targetMinutes.toString().padStart(2, '0')}`
-    
-    return { day: targetDay, time: targetTime }
-  }
-
-  const defaultDateTime = getDefaultBusinessDateTime()
 
   const [filters, setFilters] = useState<FilterState>({
     name: '',
@@ -83,6 +54,8 @@ const StoreList: React.FC = () => {
     categoriesOperator: 'OR', // デフォルトはOR
     tags: [],
     tagsOperator: 'AND', // デフォルトはAND
+    priceMin: 0,
+    priceMax: 10000,
     businessDay: '', // デフォルトは指定なし
     businessTime: '', // デフォルトは指定なし
   })
@@ -192,6 +165,8 @@ const StoreList: React.FC = () => {
       categoriesOperator: 'OR',
       tags: [],
       tagsOperator: 'AND',
+      priceMin: 0,
+      priceMax: 10000,
       businessDay: '', // デフォルトは指定なし
       businessTime: '', // デフォルトは指定なし
     }

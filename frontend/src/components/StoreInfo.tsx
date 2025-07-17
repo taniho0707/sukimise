@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import ImageGallery from './ImageGallery'
 import ParkingDisplay from './ParkingDisplay'
 import SafeBusinessHoursDisplay from './SafeBusinessHoursDisplay'
+import { BusinessHoursData } from '../types/store'
 
 interface Store {
   id: string
@@ -11,7 +12,7 @@ interface Store {
   latitude: number
   longitude: number
   categories: string[]
-  business_hours: string
+  business_hours: BusinessHoursData | string
   parking_info: string
   website_url: string
   google_map_url: string
@@ -48,7 +49,7 @@ const StoreInfo: React.FC<StoreInfoProps> = ({ store, isViewer = false }) => {
             <div className="info-section">
               <h3>営業時間</h3>
               <div className="business-hours">
-                <SafeBusinessHoursDisplay businessHours={store.business_hours} />
+                <SafeBusinessHoursDisplay businessHours={typeof store.business_hours === 'string' ? JSON.parse(store.business_hours) : store.business_hours} />
               </div>
             </div>
           )}
