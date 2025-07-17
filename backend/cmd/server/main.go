@@ -96,6 +96,21 @@ func main() {
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
+		// Check database connection
+		dbStatus := "ok"
+		if err := db.Ping(); err != nil {
+			dbStatus = "error"
+			c.JSON(503, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "HEALTH_CHECK_FAILED",
+					Message: "Database connection failed",
+					Details: err.Error(),
+				},
+			})
+			return
+		}
+
 		c.JSON(200, types.APIResponse{
 			Success: true,
 			Data: map[string]interface{}{
@@ -104,6 +119,7 @@ func main() {
 				"version":    "1.0.0",
 				"timestamp":  time.Now().Unix(),
 				"environment": cfg.Server.Environment,
+				"database":   dbStatus,
 			},
 		})
 	})

@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"sukimise-discord-bot/internal/config"
 	"sukimise-discord-bot/internal/handlers"
@@ -80,6 +84,40 @@ func main() {
 	}
 	defer dg.Close()
 
+	// Start health check HTTP server
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		// Check database connection
+		if err := db.Ping(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, `{"status":"error","message":"Database connection failed","error":"%s"}`, err.Error())
+			return
+		}
+
+		// Check Discord connection
+		discordStatus := "connected"
+		if dg.State == nil || !dg.State.Ready {
+			discordStatus = "disconnected"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","message":"Discord Bot is running","database":"ok","discord":"%s","timestamp":%d}`, 
+			discordStatus, time.Now().Unix())
+	})
+
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%s", cfg.BotPort),
+		Handler: httpMux,
+	}
+
+	// Start HTTP server in goroutine
+	go func() {
+		log.Printf("Health check server starting on port %s", cfg.BotPort)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Health check server error: %v", err)
+		}
+	}()
+
 	log.Println("Sukimise Discord Bot is running. Press Ctrl+C to exit.")
 
 	// Wait for interrupt signal
@@ -88,4 +126,11 @@ func main() {
 	<-sc
 
 	log.Println("Shutting down Sukimise Discord Bot...")
+
+	// Shutdown HTTP server
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("Health check server shutdown error: %v", err)
+	}
 }
