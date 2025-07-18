@@ -19,11 +19,11 @@ services:
     # Backend is now internal only - no external port exposure
     # Access via frontend proxy or direct container access for debugging
     expose:
-      - "${PORT:-8080}"
+      - "${BACKEND_PORT:-8081}"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
       JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-key}
-      PORT: ${PORT:-8080}
+      PORT: ${BACKEND_PORT:-8081}
       HOST: 0.0.0.0
       CGO_ENABLED: 0
       ADMIN_USERS: ${ADMIN_USERS}
@@ -44,7 +44,7 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
     environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:${BACKEND_PORT:-8081}}
       VITE_PORT: ${FRONTEND_PORT:-3000}
     volumes:
       - ./frontend:/app
@@ -60,7 +60,7 @@ services:
       - "${BOT_PORT:-8082}:${BOT_PORT:-8082}"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
-      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:${BACKEND_PORT:-8080}}
+      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:${BACKEND_PORT:-8081}}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       BOT_PORT: ${BOT_PORT:-8082}

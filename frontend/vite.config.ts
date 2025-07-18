@@ -20,7 +20,7 @@ export default defineConfig({
     port: Number(process.env.FRONTEND_PORT) || 3000,
     proxy: {
       '/api': {
-        target: process.env.VITE_BACKEND_URL || 'http://backend:8080',
+        target: process.env.VITE_BACKEND_URL || 'http://backend:8081',
         changeOrigin: true,
         secure: false,
         configure: (proxy, _options) => {
@@ -36,7 +36,7 @@ export default defineConfig({
         },
       },
       '/uploads': {
-        target: process.env.VITE_BACKEND_URL || 'http://backend:8080',
+        target: process.env.VITE_BACKEND_URL || 'http://backend:8081',
         changeOrigin: true,
         secure: false,
       },

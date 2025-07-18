@@ -22,10 +22,10 @@ func Load() (*Config, error) {
 
 	// Set default values
 	if config.SukimiseAPIURL == "" {
-		config.SukimiseAPIURL = "http://backend:8080"
+		config.SukimiseAPIURL = "http://backend:8081"
 	}
 	if config.BotPort == "" {
-		config.BotPort = "8081"
+		config.BotPort = "8082"
 	}
 
 	// Validate required fields

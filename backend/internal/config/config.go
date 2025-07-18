@@ -64,7 +64,7 @@ type CORSConfig struct {
 func LoadConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port:         getEnv("PORT", "8080"),
+			Port:         getEnv("PORT", "8081"),
 			Host:         getEnv("HOST", "localhost"),
 			ReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
 			WriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
@@ -88,7 +88,7 @@ func LoadConfig() *Config {
 			MaxFileSize:  getInt64Env("UPLOAD_MAX_FILE_SIZE", 10*1024*1024), // 10MB
 			AllowedTypes: getStringSliceEnv("UPLOAD_ALLOWED_TYPES", []string{"image/jpeg", "image/png", "image/gif", "image/webp"}),
 			UploadDir:    getEnv("UPLOAD_DIR", "./uploads"),
-			BaseURL:      getEnv("UPLOAD_BASE_URL", "http://localhost:8080"),
+			BaseURL:      getEnv("UPLOAD_BASE_URL", "http://localhost:8081"),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins:   getStringSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),

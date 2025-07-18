@@ -22,11 +22,11 @@ services:
       dockerfile: Dockerfile
     # Backend is internal only in production
     expose:
-      - "${BACKEND_PORT:-8080}"
+      - "${BACKEND_PORT:-8081}"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
-      PORT: ${BACKEND_PORT:-8080}
+      PORT: ${BACKEND_PORT:-8081}
       HOST: 0.0.0.0
       ENVIRONMENT: production
       ADMIN_USERS: ${ADMIN_USERS}
@@ -40,7 +40,7 @@ services:
       - uploads_data:/app/uploads
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${BACKEND_PORT:-8080}/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${BACKEND_PORT:-8081}/health"]
       interval: 300s
       timeout: 10s
       retries: 3
@@ -53,7 +53,7 @@ services:
       - "${BOT_PORT:-8082}:${BOT_PORT:-8082}"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
-      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:8080}
+      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:8081}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       BOT_PORT: ${BOT_PORT:-8082}
@@ -80,9 +80,7 @@ services:
         - VITE_API_BASE_URL=
     ports:
       - "${PORT:-80}:80"
-    environment:
-      - BACKEND_HOST=backend
-      - BACKEND_PORT=${BACKEND_PORT:-8080}
+    # No environment variables needed for static nginx.conf
     depends_on:
       - backend
     restart: unless-stopped

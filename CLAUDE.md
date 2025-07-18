@@ -121,6 +121,7 @@
 - **✅ コンテナ**：Docker Compose による環境構築
 - **✅ デプロイ**：コンテナベースのローカル開発環境
 - **✅ ファイル管理**：アップロードファイルの永続化
+- **✅ ポート設定**：環境別統一ポート管理（Production: 8081固定、Development: 環境変数対応）
 
 ## セキュリティ・権限管理
 
@@ -555,3 +556,62 @@ npm run test:ui
 - **バックエンド**: 30+ テストケース
 - **フロントエンド**: 20+ テストケース
 - **カバレッジ**: 主要ビジネスロジック 95%+
+
+## ポート設定詳細
+
+### 環境別ポート管理
+
+| 環境 | サービス | ポート | 設定方法 | 説明 |
+|------|----------|--------|----------|------|
+| **Production** | フロントエンド | 8080 | 固定 | 外部アクセス用メインポート |
+| **Production** | バックエンド | 8081 | 固定 | 内部API、nginx経由でアクセス |
+| **Production** | Discord Bot | 8082 | 固定 | 独立したDiscord Bot API |
+| **Development** | フロントエンド | 3000 | 固定 | Vite開発サーバー |
+| **Development** | バックエンド | 8081 | 環境変数 | `BACKEND_PORT`で変更可能 |
+| **Development** | Discord Bot | 8082 | 環境変数 | `BOT_PORT`で変更可能 |
+
+### 環境変数設定
+
+#### Production環境 (.env)
+```bash
+# 外部アクセスポート
+PORT=8080                    # フロントエンドnginx（メインアクセスポイント）
+BOT_PORT=8082               # Discord Bot（独立アクセス）
+
+# 内部ポート
+BACKEND_PORT=8081           # バックエンドAPI（内部のみ、nginx経由）
+```
+
+#### Development環境
+```bash
+# 開発用ポート設定（カスタマイズ可能）
+FRONTEND_PORT=3000          # フロントエンド開発サーバー
+BACKEND_PORT=8081           # バックエンドAPI
+BOT_PORT=8082               # Discord Bot
+```
+
+### アクセス方法
+
+#### Production環境
+- **外部アクセス**: `http://localhost:8080` (フロントエンド)
+- **API**: `http://localhost:8080/api/*` (nginx経由でバックエンドにプロキシ)
+- **Discord Bot**: `http://localhost:8082` (独立アクセス)
+
+#### Development環境
+- **フロントエンド**: `http://localhost:3000` (Vite開発サーバー)
+- **バックエンド**: `http://localhost:8081` (直接アクセス)
+- **Discord Bot**: `http://localhost:8082` (独立アクセス)
+
+### 設定ファイル
+
+#### Production環境で8081に統一したファイル
+- `docker-compose.prod.yml`: バックエンドサービスの設定
+- `nginx/nginx.conf`: アップストリーム設定
+- `backend/internal/config/config.go`: デフォルトポート設定
+- `backend/Dockerfile`: EXPOSE設定
+- `discord-bot/internal/config/config.go`: Sukimise API URL設定
+
+#### Development環境で環境変数対応したファイル
+- `docker-compose.yml`: 全サービスの環境変数対応
+- `docker-compose.dev.yml`: 開発用設定
+- `frontend/vite.config.ts`: プロキシ設定

@@ -6,7 +6,7 @@ export const getImageUrl = (imageUrl: string): string => {
   }
   
   // 相対パスの場合はベースURLを追加
-  const baseUrl = 'http://localhost:8080' // バックエンドのURL
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080' // バックエンドのURL
   
   // /uploads/で始まる場合
   if (imageUrl.startsWith('/uploads/')) {

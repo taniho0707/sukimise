@@ -134,7 +134,7 @@ const Debug: React.FC = () => {
         <h4>現在の状況:</h4>
         <ul>
           <li>フロントエンド: {window.location.origin}</li>
-          <li>APIプロキシ: /api → backend:8080</li>
+          <li>APIプロキシ: /api → backend:8081</li>
           <li>React Router: 動作中</li>
         </ul>
       </div>

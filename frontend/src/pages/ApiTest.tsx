@@ -87,7 +87,7 @@ const ApiTest: React.FC = () => {
         <h4>テスト情報:</h4>
         <ul>
           <li>フロントエンド: http://localhost:3000</li>
-          <li>バックエンドAPI: http://localhost:8080</li>
+          <li>バックエンドAPI: http://localhost:8081</li>
           <li>テストユーザー: admin / admin123</li>
         </ul>
       </div>

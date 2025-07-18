@@ -28,8 +28,8 @@ RUN apk add --no-cache curl
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration template
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Create nginx user and set permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
