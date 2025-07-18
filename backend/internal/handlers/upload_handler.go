@@ -110,20 +110,29 @@ func (h *Handler) UploadImage(c *gin.Context) {
 func (h *Handler) ServeUpload(c *gin.Context) {
 	filename := c.Param("filename")
 	
+	// Debug: Log the file request
+	fmt.Printf("DEBUG: ServeUpload called for filename: %s\n", filename)
+	
 	// セキュリティ: パス traversal を防ぐ
 	if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
+		fmt.Printf("DEBUG: Invalid filename rejected: %s\n", filename)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename"})
 		return
 	}
 
 	filepath := filepath.Join(UploadDir, filename)
 	
+	// Debug: Log the file path and check
+	fmt.Printf("DEBUG: Looking for file at: %s\n", filepath)
+	
 	// ファイルが存在するかチェック
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		fmt.Printf("DEBUG: File not found: %s\n", filepath)
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
 	}
 
+	fmt.Printf("DEBUG: Serving file: %s\n", filepath)
 	c.File(filepath)
 }
 

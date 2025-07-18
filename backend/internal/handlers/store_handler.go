@@ -152,10 +152,14 @@ func (h *Handler) CreateStore(c *gin.Context) {
 		return
 	}
 
+	// Debug: Log the user ID being used for store creation
+	log.Printf("DEBUG: Creating store with user ID: %v", userID)
+
 	store := req.ToModel(userID.(uuid.UUID))
 
 	if err := h.storeService.CreateStore(store); err != nil {
 		log.Printf("Failed to create store: %v", err)
+		log.Printf("DEBUG: Store creation failed with user ID: %v, store: %+v", userID, store)
 		errors.HandleError(c, errors.NewInternalError("Failed to create store"))
 		return
 	}

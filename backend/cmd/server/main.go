@@ -15,9 +15,12 @@ import (
 	"sukimise/internal/database"
 	"sukimise/internal/handlers"
 	"sukimise/internal/middleware"
+	"sukimise/internal/models"
 	"sukimise/internal/repositories"
 	"sukimise/internal/services"
 	"sukimise/internal/types"
+
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -66,6 +69,11 @@ func main() {
 	viewerAuthService := services.NewViewerAuthService(viewerAuthRepo)
 	categoryCustomizationService := services.NewCategoryCustomizationService(categoryCustomizationRepo)
 
+	// Initialize users from environment variables
+	if err := initializeUsersFromEnv(userService); err != nil {
+		log.Fatal("Failed to initialize users:", err)
+	}
+
 	// Initialize handlers
 	handler := handlers.NewHandler(userService, storeService, reviewService)
 	viewerAuthHandler := handlers.NewViewerAuthHandler(viewerAuthService)
@@ -86,7 +94,7 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.SecurityHeaders())
 	
-	// CSRF protection
+	// CSRF protection (login endpoints are excluded in middleware)
 	csrfConfig := middleware.CSRFConfig{
 		Secret:   cfg.JWT.Secret, // JWT秘密鍵を再利用
 		Secure:   cfg.IsProduction(),
@@ -129,6 +137,7 @@ func main() {
 
 	api := r.Group("/api/v1")
 	{
+		// Authentication routes (CSRF protection excluded in middleware)
 		auth := api.Group("/auth")
 		{
 			auth.POST("/login", handler.Login)
@@ -309,4 +318,89 @@ func validateUserFormatting(envVar, envValue string) error {
 	}
 
 	return nil
+}
+
+// initializeUsersFromEnv creates users from environment variables if they don't exist
+func initializeUsersFromEnv(userService *services.UserService) error {
+	adminUsers := os.Getenv("ADMIN_USERS")
+	editorUsers := os.Getenv("EDITOR_USERS")
+
+	// Create admin users
+	if err := createUsersFromEnvString(userService, adminUsers, "admin"); err != nil {
+		return fmt.Errorf("failed to create admin users: %w", err)
+	}
+
+	// Create editor users
+	if err := createUsersFromEnvString(userService, editorUsers, "editor"); err != nil {
+		return fmt.Errorf("failed to create editor users: %w", err)
+	}
+
+	log.Println("Users initialized successfully from environment variables")
+	return nil
+}
+
+// createUsersFromEnvString parses user string and creates users if they don't exist
+func createUsersFromEnvString(userService *services.UserService, envString, role string) error {
+	if envString == "" {
+		return nil
+	}
+
+	userEntries := strings.Split(envString, ";")
+	
+	for _, entry := range userEntries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		username := strings.TrimSpace(parts[0])
+		passwordHash := strings.TrimSpace(parts[1])
+
+		if username == "" || passwordHash == "" {
+			continue
+		}
+
+		// Check if user already exists
+		existingUser, err := userService.GetUserByUsername(username)
+		if err == nil && existingUser != nil {
+			log.Printf("User '%s' already exists, skipping creation", username)
+			continue
+		}
+
+		// Generate email from username
+		email := username + "@sukimise.local"
+
+		// Create user with pre-hashed password directly in database
+		log.Printf("Creating %s user: %s with pre-hashed password from env: %s", role, username, passwordHash)
+
+		// Create user directly with the pre-hashed password
+		userID := uuid.New()
+		user := &models.User{
+			ID:       userID,
+			Username: username,
+			Email:    email,
+			Password: passwordHash, // Use the already hashed password from env
+			Role:     role,
+		}
+
+		// Create user directly without re-hashing password
+		if err := createUserWithHashedPassword(userService, user); err != nil {
+			return fmt.Errorf("failed to create user '%s': %w", username, err)
+		}
+
+		log.Printf("Created %s user: %s with ID: %s", role, username, userID)
+	}
+
+	return nil
+}
+
+// createUserWithHashedPassword creates a user with pre-hashed password using the dedicated service method
+func createUserWithHashedPassword(userService *services.UserService, user *models.User) error {
+	// Use the new service method that doesn't re-hash the password
+	return userService.CreateUserWithHashedPassword(user)
 }

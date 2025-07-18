@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"sukimise/internal/auth"
@@ -31,16 +32,24 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
+	log.Printf("DEBUG: Login attempt for username: %s", req.Username)
+
 	user, err := h.userService.GetUserByUsername(req.Username)
 	if err != nil {
+		log.Printf("DEBUG: User not found: %s, error: %v", req.Username, err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
+	log.Printf("DEBUG: User found: %s (ID: %s)", user.Username, user.ID)
+
 	if !h.userService.ValidatePassword(user, req.Password) {
+		log.Printf("DEBUG: Password validation failed for user: %s", req.Username)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
+
+	log.Printf("DEBUG: Password validation successful for user: %s", req.Username)
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {

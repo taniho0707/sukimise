@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"strings"
 
@@ -39,6 +40,33 @@ func CSRF(config CSRFConfig) gin.HandlerFunc {
 	}
 
 	return gin.HandlerFunc(func(c *gin.Context) {
+		// APIエンドポイント（ログイン、リフレッシュ）はCSRF保護をスキップ
+		path := c.Request.URL.Path
+		method := c.Request.Method
+		userAgent := c.GetHeader("User-Agent")
+		
+		log.Printf("DEBUG CSRF: Processing %s %s (User-Agent: %s)", method, path, userAgent)
+		
+		if path == "/api/v1/auth/login" || path == "/api/v1/auth/refresh" {
+			// ログイン/リフレッシュエンドポイントはCSRF保護をスキップ
+			log.Printf("DEBUG CSRF: Skipping CSRF protection for auth endpoint: %s", path)
+			c.Next()
+			return
+		}
+
+		// JWT認証されたAPIリクエストはCSRF保護をスキップ
+		if isJWTAuthenticated(c) {
+			log.Printf("DEBUG CSRF: Skipping CSRF protection for JWT authenticated request to %s", path)
+			c.Next()
+			return
+		}
+		
+		// CSRFスキップフラグがある場合はスキップ
+		if skipCSRF, exists := c.Get("skip_csrf"); exists && skipCSRF.(bool) {
+			c.Next()
+			return
+		}
+		
 		// GETリクエストとOPTIONSリクエストはCSRF保護をスキップ
 		if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
 			// CSRFトークンを生成してクッキーに設定
@@ -50,7 +78,9 @@ func CSRF(config CSRFConfig) gin.HandlerFunc {
 		}
 
 		// POST, PUT, DELETE, PATCHリクエストはCSRF保護を適用
+		log.Printf("DEBUG CSRF: Applying CSRF protection to %s %s", c.Request.Method, path)
 		if !validateCSRFToken(c, config) {
+			log.Printf("DEBUG CSRF: CSRF token validation failed for %s %s", c.Request.Method, path)
 			c.JSON(http.StatusForbidden, gin.H{
 				"error":   "CSRF token validation failed",
 				"message": "Invalid or missing CSRF token",
@@ -158,4 +188,44 @@ func GetCSRFToken(c *gin.Context) string {
 	}
 	
 	return ""
+}
+
+// isJWTAuthenticated checks if the request has a valid JWT Authorization header
+func isJWTAuthenticated(c *gin.Context) bool {
+	authHeader := c.GetHeader("Authorization")
+	log.Printf("DEBUG JWT: Authorization header: '%s'", authHeader)
+	
+	if authHeader == "" {
+		log.Printf("DEBUG JWT: No Authorization header found")
+		return false
+	}
+
+	// Check if it's a Bearer token
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		log.Printf("DEBUG JWT: Authorization header is not Bearer token (prefix check failed)")
+		return false
+	}
+
+	// Extract the token
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == "" {
+		log.Printf("DEBUG JWT: Empty token string after removing Bearer prefix")
+		return false
+	}
+
+	// Basic validation - if it's a JWT format (has dots)
+	// More thorough validation would require parsing the JWT, but for CSRF skipping,
+	// just checking the presence of a Bearer token is sufficient since the actual
+	// JWT validation happens in the Auth middleware later
+	parts := strings.Split(tokenString, ".")
+	isValid := len(parts) == 3 // JWT has 3 parts separated by dots
+	log.Printf("DEBUG JWT: Token validation - token length: %d, parts: %d, isValid: %v", len(tokenString), len(parts), isValid)
+	
+	if isValid {
+		log.Printf("DEBUG JWT: JWT token format is valid, skipping CSRF protection")
+	} else {
+		log.Printf("DEBUG JWT: JWT token format is invalid")
+	}
+	
+	return isValid
 }

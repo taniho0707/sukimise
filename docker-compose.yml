@@ -60,7 +60,7 @@ services:
       - "${BOT_PORT:-8082}:${BOT_PORT:-8082}"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://sukimise_user:sukimise_password@postgres:5432/sukimise?sslmode=disable}
-      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:8080}
+      SUKIMISE_API_URL: ${SUKIMISE_API_URL:-http://backend:${BACKEND_PORT:-8080}}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       BOT_PORT: ${BOT_PORT:-8082}

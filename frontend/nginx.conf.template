@@ -28,6 +28,21 @@ server {
     add_header X-XSS-Protection "1; mode=block";
     add_header Referrer-Policy "strict-origin-when-cross-origin";
 
+    # Upload files - proxy to backend (must come before static files regex)
+    location /uploads/ {
+        
+        proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Cache uploaded images
+        proxy_cache_valid 200 1h;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+
     # API routes - proxy to backend
     location /api/ {
         
@@ -47,21 +62,6 @@ server {
         proxy_read_timeout 30s;
     }
 
-    # Upload files - proxy to backend
-    location /uploads/ {
-        
-        proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Cache uploaded images
-        proxy_cache_valid 200 1h;
-        add_header X-Cache-Status $upstream_cache_status;
-    }
-
     # Health check endpoint
     location /health {
         access_log off;
@@ -69,8 +69,8 @@ server {
         add_header Content-Type text/plain;
     }
 
-    # Static files with caching
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+    # Static files with caching (excludes images that might be in /uploads/)
+    location ~* \.(js|css|ico|svg|woff|woff2)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;

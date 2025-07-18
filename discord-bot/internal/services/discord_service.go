@@ -242,6 +242,14 @@ func (s *DiscordService) createStoreViaSukimise(discordID string, storeInfo *mod
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	
+	// Debug: Print request headers
+	fmt.Printf("DEBUG: Request headers:\n")
+	for key, values := range req.Header {
+		for _, value := range values {
+			fmt.Printf("  %s: %s\n", key, value)
+		}
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

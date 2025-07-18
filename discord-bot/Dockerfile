@@ -41,14 +41,14 @@ RUN chown appuser:appgroup discord-bot
 # Switch to non-root user
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:${BOT_PORT:-8082}/health || exit 1
-
 # Install wget for health checks
 USER root
 RUN apk add --no-cache wget
 USER appuser
+
+# Health check
+HEALTHCHECK --interval=300s --timeout=10s --start-period=120s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:${BOT_PORT:-8082}/health || exit 1
 
 # Run the application
 CMD ["./discord-bot"]

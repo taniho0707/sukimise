@@ -74,7 +74,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
         console.log('Categories response:', categoriesRes.data)
         console.log('Tags response:', tagsRes.data)
         
-        // Handle new API response format
+        // Handle new API response format with null safety
         const categories = categoriesRes.data.success && categoriesRes.data.data 
           ? categoriesRes.data.data.categories 
           : categoriesRes.data.categories || []
@@ -82,8 +82,8 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
           ? tagsRes.data.data.tags 
           : tagsRes.data.tags || []
           
-        setAvailableCategories(categories)
-        setAvailableTags(tags)
+        setAvailableCategories(Array.isArray(categories) ? categories : [])
+        setAvailableTags(Array.isArray(tags) ? tags : [])
 
         // 初回読み込み時のデフォルト値設定は行わない（指定なしのまま）
       } catch (error: any) {
@@ -163,7 +163,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
                 </select>
               </div>
               <div className="checkbox-grid">
-                {availableCategories.map((category) => (
+                {(availableCategories || []).map((category) => (
                   <label key={category} className="checkbox-item">
                     <input
                       type="checkbox"
@@ -190,7 +190,7 @@ const StoreFilter: React.FC<StoreFilterProps> = ({ initialFilters, onFilterChang
                 </select>
               </div>
               <div className="checkbox-grid tag-grid">
-                {availableTags.map((tag) => (
+                {(availableTags || []).map((tag) => (
                   <label key={tag} className="checkbox-item">
                     <input
                       type="checkbox"

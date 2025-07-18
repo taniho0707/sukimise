@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 	"sukimise/internal/models"
 	"sukimise/internal/repositories"
 
@@ -35,6 +36,32 @@ func (s *UserService) CreateUser(user *models.User) error {
 	user.Password = string(hashedPassword)
 
 	return s.userRepo.Create(user)
+}
+
+// CreateUserWithHashedPassword creates a user with an already hashed password (for initialization)
+func (s *UserService) CreateUserWithHashedPassword(user *models.User) error {
+	existingUser, _ := s.userRepo.GetByUsername(user.Username)
+	if existingUser != nil {
+		return errors.New("username already exists")
+	}
+
+	existingUser, _ = s.userRepo.GetByEmail(user.Email)
+	if existingUser != nil {
+		return errors.New("email already exists")
+	}
+
+	// Password is already hashed, don't hash it again
+	// Log for debugging
+	log.Printf("DEBUG: Creating user %s with pre-hashed password: %s", user.Username, user.Password)
+	
+	err := s.userRepo.Create(user)
+	if err != nil {
+		log.Printf("ERROR: Failed to create user %s: %v", user.Username, err)
+		return err
+	}
+	
+	log.Printf("DEBUG: Successfully created user %s without re-hashing password", user.Username)
+	return nil
 }
 
 func (s *UserService) GetUserByID(id uuid.UUID) (*models.User, error) {

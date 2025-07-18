@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from '@/config'
+import { fetchCSRFToken, getCSRFConfig } from '@/utils/csrf'
 
 interface User {
   id: string
@@ -37,18 +38,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token')
-    const savedUser = localStorage.getItem('user')
-    
-    if (savedToken && savedUser) {
-      setToken(savedToken)
-      setUser(JSON.parse(savedUser))
+    const initializeAuth = async () => {
+      // CSRFトークンを最初に取得
+      await fetchCSRFToken(API_BASE_URL)
       
-      // Axiosのデフォルトヘッダーを設定
-      axios.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`
+      const savedToken = localStorage.getItem('token')
+      const savedUser = localStorage.getItem('user')
+      
+      if (savedToken && savedUser) {
+        setToken(savedToken)
+        setUser(JSON.parse(savedUser))
+        
+        // Axiosのデフォルトヘッダーを設定
+        axios.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`
+      }
+      
+      setLoading(false)
     }
     
-    setLoading(false)
+    initializeAuth()
   }, [])
 
   const logout = useCallback(() => {
@@ -61,7 +69,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     delete axios.defaults.headers.common['Authorization']
   }, [])
 
-  // Axiosインターセプターを設定してトークンを自動的に追加
+  // Axiosインターセプターを設定してトークンとCSRFトークンを自動的に追加
   useEffect(() => {
     const requestInterceptor = axios.interceptors.request.use(
       (config) => {
@@ -69,6 +77,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (currentToken) {
           config.headers.Authorization = `Bearer ${currentToken}`
         }
+        
+        // POSTリクエストなどにCSRFトークンを追加
+        if (config.method !== 'get' && config.method !== 'head' && config.method !== 'options') {
+          const csrfConfig = getCSRFConfig()
+          Object.assign(config.headers, csrfConfig.headers)
+        }
+        
         return config
       },
       (error) => {
@@ -95,10 +110,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (username: string, password: string) => {
     try {
+      // CSRFトークンを含めてログインリクエストを送信
+      const csrfConfig = getCSRFConfig()
       const response = await axios.post(`${API_BASE_URL}/api/v1/auth/login`, {
         username,
         password,
-      })
+      }, csrfConfig)
 
       const { access_token, user: userData } = response.data
       

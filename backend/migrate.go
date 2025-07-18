@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,12 +16,12 @@ func main() {
 	dbURL := "postgres://sukimise_user:sukimise_password@localhost:5432/sukimise?sslmode=disable"
 	
 	db, err := sql.Open("postgres", dbURL)
-	if err \!= nil {
+	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err \!= nil {
+	if err := db.Ping(); err != nil {
 		log.Fatal("Failed to ping database:", err)
 	}
 
@@ -34,14 +33,14 @@ func main() {
 			executed_at TIMESTAMP DEFAULT NOW()
 		)
 	`)
-	if err \!= nil {
+	if err != nil {
 		log.Fatal("Failed to create migrations table:", err)
 	}
 
 	// Get all migration files
 	migrationsDir := "./migrations"
 	files, err := ioutil.ReadDir(migrationsDir)
-	if err \!= nil {
+	if err != nil {
 		log.Fatal("Failed to read migrations directory:", err)
 	}
 
@@ -59,7 +58,7 @@ func main() {
 		// Check if migration already executed
 		var count int
 		err := db.QueryRow("SELECT COUNT(*) FROM migrations WHERE filename = $1", filename).Scan(&count)
-		if err \!= nil {
+		if err != nil {
 			log.Fatal("Failed to check migration status:", err)
 		}
 
@@ -70,18 +69,18 @@ func main() {
 
 		// Read and execute migration
 		content, err := ioutil.ReadFile(filepath.Join(migrationsDir, filename))
-		if err \!= nil {
+		if err != nil {
 			log.Fatal("Failed to read migration file:", err)
 		}
 
 		_, err = db.Exec(string(content))
-		if err \!= nil {
+		if err != nil {
 			log.Fatalf("Failed to execute migration %s: %v", filename, err)
 		}
 
 		// Record migration as executed
 		_, err = db.Exec("INSERT INTO migrations (filename) VALUES ($1)", filename)
-		if err \!= nil {
+		if err != nil {
 			log.Fatal("Failed to record migration:", err)
 		}
 
