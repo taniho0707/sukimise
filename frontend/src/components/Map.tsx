@@ -118,6 +118,8 @@ const Map: React.FC<MapProps> = ({
 
   // 地図の初期化
   useEffect(() => {
+    let resizeObserver: ResizeObserver | null = null
+    
     const initializeMap = () => {
       if (!mapContainerRef.current) return
 
@@ -134,12 +136,30 @@ const Map: React.FC<MapProps> = ({
       
       try {
         // 地図を作成
-        const map = L.map(mapContainerRef.current).setView(mapCenter, zoom)
+        const map = L.map(mapContainerRef.current, {
+          preferCanvas: true,
+          fadeAnimation: false,
+          zoomAnimation: true,
+          markerZoomAnimation: true
+        }).setView(mapCenter, zoom)
     
-        // OpenStreetMapタイルレイヤーを追加
+        // OpenStreetMapタイルレイヤーを追加（最適化設定）
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 19,
+          minZoom: 1,
+          tileSize: 256,
+          opacity: 1,
+          keepBuffer: 2,
+          updateWhenIdle: false,
+          updateWhenZooming: true,
+          crossOrigin: true
         }).addTo(map)
+
+        // 初期化後に地図サイズを再計算
+        setTimeout(() => {
+          map.invalidateSize()
+        }, 100)
 
         // 地図の中心とズーム変更を親コンポーネントに通知
         map.on('moveend', () => {
@@ -153,6 +173,19 @@ const Map: React.FC<MapProps> = ({
           }
         })
 
+        // ResizeObserverでコンテナサイズ変更を監視
+        if (window.ResizeObserver && mapContainerRef.current) {
+          resizeObserver = new ResizeObserver(() => {
+            if (map) {
+              // デバウンスして地図サイズを再計算
+              setTimeout(() => {
+                map.invalidateSize()
+              }, 100)
+            }
+          })
+          resizeObserver.observe(mapContainerRef.current)
+        }
+
         mapRef.current = map
       } catch (error) {
         console.error('Error initializing map:', error)
@@ -165,17 +198,34 @@ const Map: React.FC<MapProps> = ({
       if (container.offsetWidth > 0 && container.offsetHeight > 0) {
         initializeMap()
       } else {
-        // コンテナのサイズが0の場合は少し待つ
-        const timer = setTimeout(() => {
+        // コンテナのサイズが0の場合は段階的に待機
+        let retryCount = 0
+        const maxRetries = 10
+        const retryDelay = 50
+        
+        const retryInit = () => {
+          if (retryCount >= maxRetries) {
+            console.warn('Map container size check timed out, initializing anyway')
+            initializeMap()
+            return
+          }
+          
           if (container.offsetWidth > 0 && container.offsetHeight > 0) {
             initializeMap()
+          } else {
+            retryCount++
+            setTimeout(retryInit, retryDelay * retryCount)
           }
-        }, 100)
-        return () => clearTimeout(timer)
+        }
+        
+        retryInit()
       }
     }
 
     return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+      }
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null

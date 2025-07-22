@@ -85,6 +85,16 @@ func NewDatabaseError(message string) *AppError {
 	}
 }
 
+// NewConflictError creates a conflict error (for duplicate resources)
+func NewConflictError(message string, details string) *AppError {
+	return &AppError{
+		Message:    message,
+		StatusCode: http.StatusConflict,
+		Code:       "CONFLICT",
+		Details:    details,
+	}
+}
+
 // HandleError handles application errors and sends appropriate HTTP response
 func HandleError(c *gin.Context, err error) {
 	if appErr, ok := err.(*AppError); ok {

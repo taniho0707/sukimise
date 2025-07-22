@@ -157,6 +157,21 @@ func (h *Handler) CreateStore(c *gin.Context) {
 
 	store := req.ToModel(userID.(uuid.UUID))
 
+	// Check for duplicate stores before creating
+	duplicate, err := h.storeService.CheckForDuplicate(store.Name, store.Latitude, store.Longitude)
+	if err != nil {
+		log.Printf("Failed to check for duplicates: %v", err)
+		errors.HandleError(c, errors.NewInternalError("Failed to check for duplicates"))
+		return
+	}
+
+	if duplicate != nil {
+		details := fmt.Sprintf("既に同じ名前「%s」で同じ場所（50m以内）に店舗が登録されています。登録日: %s", 
+			duplicate.Name, duplicate.CreatedAt.Format("2006-01-02 15:04:05"))
+		errors.HandleError(c, errors.NewConflictError("重複する店舗が見つかりました", details))
+		return
+	}
+
 	if err := h.storeService.CreateStore(store); err != nil {
 		log.Printf("Failed to create store: %v", err)
 		log.Printf("DEBUG: Store creation failed with user ID: %v, store: %+v", userID, store)

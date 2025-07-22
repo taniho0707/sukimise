@@ -260,6 +260,26 @@ func (s *DiscordService) createStoreViaSukimise(discordID string, storeInfo *mod
 
 	if resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		
+		// Handle duplicate store error (HTTP 409 Conflict)
+		if resp.StatusCode == http.StatusConflict {
+			// Parse error response to get details
+			var errorResp struct {
+				Success bool `json:"success"`
+				Error   struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+					Details string `json:"details"`
+				} `json:"error"`
+			}
+			
+			if err := json.Unmarshal(bodyBytes, &errorResp); err == nil {
+				return nil, fmt.Errorf("重複する店舗が見つかりました: %s", errorResp.Error.Details)
+			}
+			
+			return nil, fmt.Errorf("重複する店舗が見つかりました: この店舗は既に登録されています")
+		}
+		
 		return nil, fmt.Errorf("store creation failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"sukimise-discord-bot/internal/services"
 
@@ -168,7 +169,24 @@ func (h *CommandHandler) handleAddCommand(s *discordgo.Session, i *discordgo.Int
 	// Add store from Google Maps URL
 	storeResp, err := h.discordService.AddStoreFromGoogleMaps(discordID, googleMapURL)
 	if err != nil {
-		content := fmt.Sprintf("❌ **Store Registration Failed**\n%s", err.Error())
+		var content string
+		errorMsg := err.Error()
+		
+		// Check if this is a duplicate error
+		if strings.Contains(errorMsg, "重複する店舗が見つかりました") {
+			content = fmt.Sprintf("⚠️ **重複店舗検出**\n\n"+
+				"指定された店舗は既にデータベースに登録されている可能性があります。\n\n"+
+				"**詳細:**\n%s\n\n"+
+				"**確認方法:**\n"+
+				"• Webサイト (http://localhost) で店舗を検索してください\n"+
+				"• 同じ名前で同じ場所（50m以内）の店舗が既に存在します\n\n"+
+				"**対処法:**\n"+
+				"• 既存店舗にレビューを追加してください\n"+
+				"• 店舗名や場所が異なる場合は管理者にお知らせください", errorMsg)
+		} else {
+			content = fmt.Sprintf("❌ **Store Registration Failed**\n%s", errorMsg)
+		}
+		
 		s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 			Content: content,
 		})

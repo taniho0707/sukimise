@@ -17,6 +17,7 @@ type StoreRepositoryInterface interface {
 	Delete(id uuid.UUID) error
 	GetAllCategories() ([]string, error)
 	GetAllTags() ([]string, error)
+	FindDuplicateByLocationAndName(name string, latitude, longitude float64) (*models.Store, error)
 }
 
 type UserRepositoryInterface interface {

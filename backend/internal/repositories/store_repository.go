@@ -403,3 +403,42 @@ func (r *StoreRepository) GetAllTags() ([]string, error) {
 	return tags, nil
 }
 
+// FindDuplicateByLocationAndName finds duplicate stores based on:
+// 1. Location proximity (within 50 meters using PostGIS)
+// 2. Exact name match
+// Both conditions must be met for a store to be considered duplicate
+func (r *StoreRepository) FindDuplicateByLocationAndName(name string, latitude, longitude float64) (*models.Store, error) {
+	query := `
+		SELECT id, name, address, latitude, longitude, categories, business_hours,
+			   parking_info, website_url, google_map_url, sns_urls,
+			   tags, photos, created_by, created_at, updated_at
+		FROM stores 
+		WHERE name = $1
+		  AND ST_DWithin(
+		        ST_Point(longitude, latitude)::geography,
+		        ST_Point($2, $3)::geography,
+		        50
+		      )
+		ORDER BY created_at ASC
+		LIMIT 1
+	`
+	
+	var store models.Store
+	err := r.db.QueryRow(query, name, longitude, latitude).Scan(
+		&store.ID, &store.Name, &store.Address, &store.Latitude, &store.Longitude,
+		&store.Categories, &store.BusinessHours, &store.ParkingInfo,
+		&store.WebsiteURL, &store.GoogleMapURL, &store.SnsUrls, &store.Tags,
+		&store.Photos, &store.CreatedBy, &store.CreatedAt, &store.UpdatedAt,
+	)
+	
+	if err == sql.ErrNoRows {
+		return nil, nil // No duplicate found
+	}
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	return &store, nil
+}
+

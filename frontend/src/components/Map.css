@@ -13,6 +13,35 @@
   position: relative;
 }
 
+/* Leafletタイル読み込み最適化 */
+.leaflet-tile-container {
+  transition: opacity 0.1s ease-in-out;
+}
+
+.leaflet-tile {
+  transition: opacity 0.1s ease-in-out;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* グレー・白い表示問題を防ぐためのスタイル */
+.leaflet-zoom-anim .leaflet-zoom-animated {
+  transition: transform 0.1s cubic-bezier(0, 0, 0.25, 1);
+}
+
+.leaflet-container {
+  background-color: #e8f1f8; /* OpenStreetMapに近い薄い青色 */
+}
+
+/* ズーム中のタイル表示を改善 */
+.leaflet-tile-loading {
+  opacity: 0.5;
+}
+
+.leaflet-tile-loaded {
+  opacity: 1;
+}
+
 /* カスタムマーカーのスタイル */
 .custom-marker {
   background: none;

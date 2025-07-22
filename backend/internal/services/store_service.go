@@ -78,3 +78,8 @@ func (s *StoreService) GetAllTags() ([]string, error) {
 	return s.storeRepo.GetAllTags()
 }
 
+// CheckForDuplicate checks if a store with the same name and location (within 50m) already exists
+func (s *StoreService) CheckForDuplicate(name string, latitude, longitude float64) (*models.Store, error) {
+	return s.storeRepo.FindDuplicateByLocationAndName(name, latitude, longitude)
+}
+
