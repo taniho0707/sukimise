@@ -934,11 +934,8 @@ func extractCoordinatesFromURL(mapURL string) (float64, float64, error) {
 
 	// Look for coordinates in various formats
 	patterns := []string{
-		`@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)`,     // @lat,lng (small decimal places optional)
-		`/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),`,   // /@lat,lng, (with zoom level)
 		`!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)`,           // !3dlat!4dlng
 		`ll=(-?\d+\.\d+),(-?\d+\.\d+)`,             // ll=lat,lng
-		`center=(-?\d+\.\d+),(-?\d+\.\d+)`,         // center=lat,lng
 	}
 
 	for i, pattern := range patterns {
