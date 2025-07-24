@@ -68,7 +68,7 @@ func main() {
 	}
 
 	// Initialize handlers
-	commandHandler := handlers.NewCommandHandler(discordService)
+	commandHandler := handlers.NewCommandHandler(discordService, cfg.SukimiseFrontendURL)
 
 	// Register command handlers
 	dg.AddHandler(commandHandler.HandleSlashCommand)

@@ -11,12 +11,14 @@ import (
 )
 
 type CommandHandler struct {
-	discordService *services.DiscordService
+	discordService  *services.DiscordService
+	frontendBaseURL string
 }
 
-func NewCommandHandler(discordService *services.DiscordService) *CommandHandler {
+func NewCommandHandler(discordService *services.DiscordService, frontendBaseURL string) *CommandHandler {
 	return &CommandHandler{
-		discordService: discordService,
+		discordService:  discordService,
+		frontendBaseURL: frontendBaseURL,
 	}
 }
 
@@ -194,16 +196,17 @@ func (h *CommandHandler) handleAddCommand(s *discordgo.Session, i *discordgo.Int
 	}
 
 	// Success message with detailed log
+	sukimiseStoreURL := fmt.Sprintf("%s/stores/%s", h.frontendBaseURL, storeResp.ID)
 	content := fmt.Sprintf("✅ **Store Successfully Registered!**\n\n"+
 		"**Store Details:**\n"+
 		"• **Name:** %s\n"+
 		"• **Address:** %s\n"+
-		"• **Store ID:** %s\n\n"+
+		"• **Sukimise Store Page:** %s\n\n"+
 		"**Registration Info:**\n"+
 		"• **Registered by:** <@%s>\n"+
 		"• **Google Maps URL:** %s\n\n"+
 		"The store has been added to the Sukimise database and is now available for reviews and management.",
-		storeResp.Name, storeResp.Address, storeResp.ID, discordID, googleMapURL)
+		storeResp.Name, storeResp.Address, sukimiseStoreURL, discordID, googleMapURL)
 
 	s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 		Content: content,
