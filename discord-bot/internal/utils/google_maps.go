@@ -17,140 +17,397 @@ import (
 
 // IsValidGoogleMapsURL checks if the URL is a valid Google Maps place URL
 func IsValidGoogleMapsURL(mapURL string) bool {
-	return strings.HasPrefix(mapURL, "https://www.google.com/maps/place/") ||
-		strings.HasPrefix(mapURL, "https://maps.google.com/maps/place/") ||
-		strings.HasPrefix(mapURL, "https://goo.gl/maps/") ||
-		strings.HasPrefix(mapURL, "https://maps.app.goo.gl/")
+	validPrefixes := []string{
+		"https://www.google.com/maps/place/",
+		"https://maps.google.com/maps/place/",
+		"https://www.google.co.jp/maps/place/",
+		"https://maps.google.co.jp/maps/place/",
+		"https://goo.gl/maps/",
+		"https://maps.app.goo.gl/",
+		"https://www.google.com/maps/@",
+		"https://maps.google.com/maps/@",
+	}
+	
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(mapURL, prefix) {
+			return true
+		}
+	}
+	
+	// Also check for URLs that contain place information even if they don't start with typical prefixes
+	if strings.Contains(mapURL, "google.com/maps") && 
+	   (strings.Contains(mapURL, "place/") || strings.Contains(mapURL, "@") || strings.Contains(mapURL, "data=")) {
+		return true
+	}
+	
+	return false
 }
 
-// ExtractStoreInfoFromURL extracts store information from Google Maps URL
+// ExtractStoreInfoFromURL extracts store information from Google Maps URL using simplified API-based approach
 func ExtractStoreInfoFromURL(mapURL string) (*models.StoreCreateRequest, error) {
-	// If it's a shortened URL, expand it first
+	fmt.Printf("DEBUG: Starting URL processing: %s\n", mapURL)
+	
+	// Step 1: Expand shortened URL if needed
+	processedURL := mapURL
 	if strings.HasPrefix(mapURL, "https://maps.app.goo.gl/") || strings.HasPrefix(mapURL, "https://goo.gl/maps/") {
 		expandedURL, err := expandShortenedURL(mapURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to expand shortened URL: %v", err)
 		}
-		mapURL = expandedURL
-		fmt.Printf("DEBUG: Expanded URL: %s\n", mapURL)
+		processedURL = expandedURL
+		fmt.Printf("DEBUG: Expanded URL: %s\n", processedURL)
 	}
-
-	// Parse URL to extract information
-	parsedURL, err := url.Parse(mapURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %v", err)
+	
+	// Step 2: URL decode if needed
+	if decodedURL, err := url.QueryUnescape(processedURL); err == nil {
+		processedURL = decodedURL
+		fmt.Printf("DEBUG: Decoded URL: %s\n", processedURL)
 	}
-
-	// Extract store name from URL path
-	storeName := extractStoreNameFromPath(parsedURL.Path)
-	fmt.Printf("DEBUG: Store name from URL path: '%s'\n", storeName)
+	
+	// Step 3: Extract store name from URL
+	storeName := extractStoreNameFromURL(processedURL)
 	if storeName == "" {
-		storeName = "Unknown Store"
+		return nil, fmt.Errorf("failed to extract store name from URL")
 	}
-
-	// Try to get place details from Google Maps Places API first
-	address, websiteURL, pageStoreName, apiLat, apiLng, businessHours, err := getPlaceDetailsFromAPI(mapURL)
-	var lat, lng float64
+	fmt.Printf("DEBUG: Extracted store name: '%s'\n", storeName)
+	
+	// Step 4: Try to extract coordinates from URL
+	lat, lng, hasCoordinates := tryExtractCoordinatesFromURL(processedURL)
+	
+	var placeID string
+	var err error
+	
+	if strings.Contains(storeName, "〒") || !hasCoordinates { // 郵便番号が含まれていれば Android、そうでないならブラウザからのリンクと仮定、最適な検索をかける
+		// Step 5b: Use Text Search API with store name only
+		fmt.Printf("DEBUG: Using Text Search API with store name: %s\n", storeName)
+		placeID, err = findPlaceIDByTextSearch(storeName)
+	} else {
+		// Step 5a: Use Nearby Search API with coordinates and store name
+		fmt.Printf("DEBUG: Using Nearby Search API with coordinates: %f, %f, %s\n", lat, lng, storeName)
+		placeID, err = findPlaceIDByNearbySearch(storeName, lat, lng)
+	}
 	
 	if err != nil {
-		fmt.Printf("DEBUG: Google Maps API failed, falling back to HTML scraping and URL coordinates: %v\n", err)
-		// Fallback to HTML scraping if API fails
-		address, websiteURL, pageStoreName, err = extractAdditionalInfoFromPage(mapURL)
-		if err != nil {
-			// If we can't extract additional info, continue with basic info
-			address = ""
-			websiteURL = ""
-			pageStoreName = ""
-		}
-		
-		// Extract coordinates from URL as fallback
-		lat, lng, err = extractCoordinatesFromURL(mapURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to extract coordinates: %v", err)
-		}
-		
-		// Use default business hours if API failed
-		businessHours = "営業時間: 11:00-22:00\nラストオーダー: 21:30\n定休日: 年中無休"
-	} else {
-		// Use coordinates from API if available
-		lat, lng = apiLat, apiLng
-		fmt.Printf("DEBUG: Using coordinates from Places API: %f, %f\n", lat, lng)
+		return nil, fmt.Errorf("failed to find place ID: %v", err)
 	}
 	
-	// If address extraction failed, try reverse geocoding as fallback
-	if address == "" || address == "Address not available" {
-		fmt.Printf("DEBUG: GoogleMaps address extraction failed, trying reverse geocoding as fallback\n")
-		reverseAddress := reverseGeocodeFromCoordinates(lat, lng)
-		if reverseAddress != "" {
-			address = reverseAddress
-		} else {
-			address = "Address not available"
-		}
+	if placeID == "" {
+		return nil, fmt.Errorf("no place found for the given store")
 	}
 	
-	// Remove "日本、" prefix from address if present
-	if strings.HasPrefix(address, "日本、") {
-		address = strings.TrimPrefix(address, "日本、")
-		fmt.Printf("DEBUG: Removed '日本、' prefix from address. New address: '%s'\n", address)
+	fmt.Printf("DEBUG: Found Place ID: %s\n", placeID)
+	
+	// Step 6: Get detailed information using Place Details API
+	storeInfo, err := getStoreDetailsFromPlaceID(placeID, mapURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get store details: %v", err)
 	}
 	
-	// Use page store name if URL name is invalid or empty
-	fmt.Printf("DEBUG: Page store name: '%s'\n", pageStoreName)
-	fmt.Printf("DEBUG: Current store name: '%s'\n", storeName)
-	if pageStoreName != "" && (storeName == "" || storeName == "Unknown Store" || !isValidStoreName(storeName)) {
-		storeName = pageStoreName
-		fmt.Printf("DEBUG: Using page store name: '%s'\n", storeName)
-	}
+	fmt.Printf("DEBUG: Successfully extracted store info - Name: '%s', Address: '%s'\n", 
+		storeInfo.Name, storeInfo.Address)
 	
-	// Final fallback if still invalid
-	if storeName == "" || !isValidStoreName(storeName) {
-		storeName = "Unknown Store"
-		fmt.Printf("DEBUG: Using fallback store name: '%s'\n", storeName)
-	}
-	
-	fmt.Printf("DEBUG: Final store name: '%s'\n", storeName)
+	return storeInfo, nil
+}
 
-	// SNS URLとホームページURLを分類
-	var snsUrls []string
-	var homePageURL string
-	
-	if websiteURL != "" {
-		if isSNSURL(websiteURL) {
-			snsUrls = append(snsUrls, websiteURL)
-		} else {
-			homePageURL = websiteURL
+// extractStoreNameFromURL extracts store name from URL using both simple and complex methods
+func extractStoreNameFromURL(processedURL string) string {
+	// Try simple path extraction first
+	if parsedURL, err := url.Parse(processedURL); err == nil {
+		storeName := extractStoreNameFromPath(parsedURL.Path)
+		if storeName != "" && isValidStoreName(storeName) {
+			return storeName
 		}
 	}
+	
+	// Try complex extraction from decoded URL
+	storeName := extractStoreNameFromDecodedURL(processedURL)
+	if storeName != "" && isValidStoreName(storeName) {
+		return storeName
+	}
+	
+	return ""
+}
 
-	// Parse business hours from string to struct
+// tryExtractCoordinatesFromURL tries to extract coordinates from URL and returns whether coordinates were found
+func tryExtractCoordinatesFromURL(processedURL string) (lat, lng float64, hasCoordinates bool) {
+	lat, lng, err := extractCoordinatesFromURL(processedURL)
+	if err != nil {
+		return 0, 0, false
+	}
+	return lat, lng, true
+}
+
+// findPlaceIDByNearbySearch finds Place ID using Nearby Search API with coordinates and store name
+func findPlaceIDByNearbySearch(storeName string, lat, lng float64) (string, error) {
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey == "" {
+		return "", fmt.Errorf("Google Maps API key not found")
+	}
+	
+	// Use Places API (New) Nearby Search
+	searchURL := fmt.Sprintf("https://places.googleapis.com/v1/places:searchNearby?key=%s&languageCode=ja", apiKey)
+	
+	requestBody := map[string]interface{}{
+		"maxResultCount": 10,
+		"locationRestriction": map[string]interface{}{
+			"circle": map[string]interface{}{
+				"center": map[string]interface{}{
+					"latitude":  lat,
+					"longitude": lng,
+				},
+				"radius": 100.0, // 100m radius
+			},
+		},
+		"languageCode": "ja",
+	}
+	
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal nearby search request: %v", err)
+	}
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("POST", searchURL, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create nearby search request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Goog-FieldMask", "places.id,places.displayName")
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to make nearby search request: %v", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("nearby search API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	
+	var searchResp struct {
+		Places []struct {
+			ID          string `json:"id"`
+			DisplayName struct {
+				Text string `json:"text"`
+			} `json:"displayName"`
+		} `json:"places"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		return "", fmt.Errorf("failed to decode nearby search response: %v", err)
+	}
+	
+	if len(searchResp.Places) == 0 {
+		return "", fmt.Errorf("no places found nearby")
+	}
+	
+	// Find the best match by name similarity
+	bestMatch := ""
+	bestScore := 0.0
+	
+	for _, place := range searchResp.Places {
+		score := calculateSimilarity(storeName, place.DisplayName.Text)
+		fmt.Printf("DEBUG: Nearby place '%s' similarity score: %f\n", place.DisplayName.Text, score)
+		if score > bestScore {
+			bestScore = score
+			bestMatch = place.ID
+		}
+	}
+	
+	if bestScore < 0.3 { // Minimum similarity threshold
+		return "", fmt.Errorf("no similar places found nearby (best score: %f)", bestScore)
+	}
+	
+	fmt.Printf("DEBUG: Best nearby match with score %f\n", bestScore)
+	return bestMatch, nil
+}
+
+// findPlaceIDByTextSearch finds Place ID using Text Search API with store name
+func findPlaceIDByTextSearch(storeName string) (string, error) {
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey == "" {
+		return "", fmt.Errorf("Google Maps API key not found")
+	}
+	
+	// Use Places API (New) Text Search
+	searchURL := fmt.Sprintf("https://places.googleapis.com/v1/places:searchText?key=%s&languageCode=ja", apiKey)
+	
+	requestBody := map[string]interface{}{
+		"textQuery": storeName,
+		"languageCode": "ja",
+		"maxResultCount": 5,
+	}
+	
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal text search request: %v", err)
+	}
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("POST", searchURL, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create text search request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Goog-FieldMask", "places.id,places.displayName")
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to make text search request: %v", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("text search API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	
+	var searchResp struct {
+		Places []struct {
+			ID          string `json:"id"`
+			DisplayName struct {
+				Text string `json:"text"`
+			} `json:"displayName"`
+		} `json:"places"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		return "", fmt.Errorf("failed to decode text search response: %v", err)
+	}
+	
+	if len(searchResp.Places) == 0 {
+		return "", fmt.Errorf("no places found by text search")
+	}
+	
+	// Return the first result (best match from Google)
+	return searchResp.Places[0].ID, nil
+}
+
+// getStoreDetailsFromPlaceID gets detailed store information using Place Details API
+func getStoreDetailsFromPlaceID(placeID, originalURL string) (*models.StoreCreateRequest, error) {
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("Google Maps API key not found")
+	}
+	
+	// Use Places API (New) Place Details
+	detailsURL := fmt.Sprintf("https://places.googleapis.com/v1/places/%s?key=%s&languageCode=ja", placeID, apiKey)
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("GET", detailsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create details request: %v", err)
+	}
+	req.Header.Set("X-Goog-FieldMask", "id,displayName,formattedAddress,location,websiteUri,regularOpeningHours")
+	req.Header.Set("X-Goog-Api-Key", apiKey)
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make details request: %v", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("details API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	
+	var detailsResp struct {
+		ID              string `json:"id"`
+		DisplayName     struct {
+			Text string `json:"text"`
+		} `json:"displayName"`
+		FormattedAddress string `json:"formattedAddress"`
+		Location        struct {
+			Latitude  float64 `json:"latitude"`
+			Longitude float64 `json:"longitude"`
+		} `json:"location"`
+		WebsiteUri      string `json:"websiteUri"`
+		RegularOpeningHours struct {
+			WeekdayDescriptions []string `json:"weekdayDescriptions"`
+		} `json:"regularOpeningHours"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&detailsResp); err != nil {
+		return nil, fmt.Errorf("failed to decode details response: %v", err)
+	}
+	
+	// Parse business hours
 	var businessHoursData models.BusinessHoursData
-	if businessHours != "" {
-		// If we got business hours from API (JSON string), parse it
-		if strings.HasPrefix(businessHours, "{") {
-			businessHoursData = parseBusinessHoursJSON(businessHours)
-		} else {
-			// If we got legacy format, use default
-			businessHoursData = getDefaultBusinessHoursData()
-		}
+	if len(detailsResp.RegularOpeningHours.WeekdayDescriptions) > 0 {
+		businessHoursData = parseBusinessHoursFromWeekdayDescriptions(detailsResp.RegularOpeningHours.WeekdayDescriptions)
 	} else {
-		// Use default business hours
 		businessHoursData = getDefaultBusinessHoursData()
 	}
-
-	storeInfo := &models.StoreCreateRequest{
-		Name:          storeName,
+	
+	// Clean up address (remove Japan prefix if present)
+	address := detailsResp.FormattedAddress
+	if strings.HasPrefix(address, "日本、") {
+		address = strings.TrimPrefix(address, "日本、")
+	}
+	
+	// Classify URL as SNS or website
+	var snsUrls []string
+	var websiteURL string
+	if detailsResp.WebsiteUri != "" {
+		if isSNSURL(detailsResp.WebsiteUri) {
+			snsUrls = append(snsUrls, detailsResp.WebsiteUri)
+		} else {
+			websiteURL = detailsResp.WebsiteUri
+		}
+	}
+	
+	return &models.StoreCreateRequest{
+		Name:          detailsResp.DisplayName.Text,
 		Address:       address,
-		Latitude:      lat,
-		Longitude:     lng,
-		Categories:    []string{}, // カテゴリーは登録しない
-		BusinessHours: businessHoursData, // Google Maps APIから取得した営業時間
-		GoogleMapURL:  mapURL,
-		WebsiteURL:    homePageURL,
+		Latitude:      detailsResp.Location.Latitude,
+		Longitude:     detailsResp.Location.Longitude,
+		Categories:    []string{}, // Don't set categories
+		BusinessHours: businessHoursData,
+		GoogleMapURL:  originalURL,
+		WebsiteURL:    websiteURL,
 		SNSUrls:       snsUrls,
 		Tags:          []string{"discord"},
-	}
+	}, nil
+}
 
-	return storeInfo, nil
+// calculateSimilarity calculates similarity between two strings (simple implementation)
+func calculateSimilarity(str1, str2 string) float64 {
+	// Simple Jaccard similarity using character n-grams
+	str1 = strings.ToLower(str1)
+	str2 = strings.ToLower(str2)
+	
+	// Create character sets
+	set1 := make(map[rune]bool)
+	set2 := make(map[rune]bool)
+	
+	for _, r := range str1 {
+		set1[r] = true
+	}
+	for _, r := range str2 {
+		set2[r] = true
+	}
+	
+	// Calculate intersection and union
+	intersection := 0
+	union := make(map[rune]bool)
+	
+	for r := range set1 {
+		union[r] = true
+		if set2[r] {
+			intersection++
+		}
+	}
+	for r := range set2 {
+		union[r] = true
+	}
+	
+	if len(union) == 0 {
+		return 0.0
+	}
+	
+	return float64(intersection) / float64(len(union))
 }
 
 // isSNSURL checks if the URL is a social media URL
@@ -324,168 +581,392 @@ func isValidStoreName(name string) bool {
 		}
 	}
 	
-	// Check if it's mostly numbers or special characters
-	validChars := 0
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '\u3040' && r <= '\u309F') || (r >= '\u30A0' && r <= '\u30FF') || (r >= '\u4E00' && r <= '\u9FAF') {
-			validChars++
-		}
-	}
+	// // Check if it's mostly numbers or special characters
+	// validChars := 0
+	// for _, r := range name {
+	// 	if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '\u3040' && r <= '\u309F') || (r >= '\u30A0' && r <= '\u30FF') || (r >= '\u4E00' && r <= '\u9FAF') {
+	// 		validChars++
+	// 	}
+	// }
 	
-	// Name should have at least 30% valid characters
-	return float64(validChars)/float64(len(name)) >= 0.3
+	// // Name should have at least 30% valid characters
+	// return float64(validChars)/float64(len(name)) >= 0.3
+
+	return true
 }
 
-// extractStoreNameFromHTML extracts store name from HTML content
-func extractStoreNameFromHTML(html string) string {
-	// Look for store name patterns in the HTML
-	patterns := []string{
-		`"name":"([^"]+)"`,                      // JSON-LD format
-		`<title>([^<]+)</title>`,                // Page title
-		`aria-label="([^"]+)"[^>]*role="heading"`, // Heading aria-label
-		`<h1[^>]*>([^<]+)</h1>`,                 // H1 heading
-		`data-value="([^"]+)"[^>]*aria-label="Name"`, // Name data attribute
-	}
+// // isValidAddress checks if the address is valid
+// func isValidAddress(address string) bool {
+// 	if address == "" || len(address) < 3 {
+// 		return false
+// 	}
+	
+// 	// Check for invalid patterns
+// 	invalidPatterns := []string{
+// 		"[[", "]]", "null", "{", "}", "[null",
+// 		"google.com", "maps.google", "data-",
+// 		"aria-", "class=", "id=", "onclick=",
+// 		"javascript:", "function(", "var ",
+// 		"undefined", "NaN", "Infinity",
+// 	}
+	
+// 	lowerAddress := strings.ToLower(address)
+// 	for _, pattern := range invalidPatterns {
+// 		if strings.Contains(lowerAddress, pattern) {
+// 			fmt.Printf("DEBUG: Address rejected due to invalid pattern '%s': %s\n", pattern, address)
+// 			return false
+// 		}
+// 	}
+	
+// 	// Check for minimum length and meaningful content
+// 	if len(strings.TrimSpace(address)) < 5 {
+// 		fmt.Printf("DEBUG: Address too short: %s\n", address)
+// 		return false
+// 	}
+	
+// 	// Check if it contains recognizable address components
+// 	addressIndicators := []string{
+// 		"都", "道", "府", "県", "市", "区", "町", "村",
+// 		"丁目", "番地", "号", "番", "条", "丁", "目",
+// 		"街", "通", "路", "駅", "店", "ビル", "マンション",
+// 		"Japan", "Prefecture", "City", "District",
+// 	}
+	
+// 	hasIndicator := false
+// 	for _, indicator := range addressIndicators {
+// 		if strings.Contains(address, indicator) {
+// 			hasIndicator = true
+// 			break
+// 		}
+// 	}
+	
+// 	if !hasIndicator {
+// 		fmt.Printf("DEBUG: Address lacks location indicators: %s\n", address)
+// 		return false
+// 	}
+	
+// 	// Check character composition
+// 	validChars := 0
+// 	for _, r := range address {
+// 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
+// 		   (r >= '0' && r <= '9') || (r >= '\u3040' && r <= '\u309F') || 
+// 		   (r >= '\u30A0' && r <= '\u30FF') || (r >= '\u4E00' && r <= '\u9FAF') ||
+// 		   r == ' ' || r == '、' || r == '。' || r == '-' || r == '〒' || r == '／' || r == '−' {
+// 			validChars++
+// 		}
+// 	}
+	
+// 	// Address should have at least 60% valid characters
+// 	isValid := float64(validChars)/float64(len(address)) >= 0.6
+// 	if !isValid {
+// 		fmt.Printf("DEBUG: Address failed character composition test: %s (valid: %d/%d)\n", address, validChars, len(address))
+// 	}
+	
+// 	return isValid
+// }
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindStringSubmatch(html)
-		if len(matches) >= 2 {
-			name := strings.TrimSpace(matches[1])
-			name = cleanStoreName(name)
-			if name != "" && isValidStoreName(name) {
-				// Clean up common title suffixes
-				name = strings.TrimSuffix(name, " - Google Maps")
-				name = strings.TrimSuffix(name, " - Google マップ")
-				return strings.TrimSpace(name)
+// extractStoreNameFromPath extracts store name from URL path
+func extractStoreNameFromPath(path string) string {
+	// Google Maps URLs format: /maps/place/Store+Name/... or with URL encoding
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		if part == "place" && i+1 < len(parts) {
+			storeNamePart := parts[i+1]
+			
+			// First, try to URL decode the store name part
+			if decodedPart, err := url.QueryUnescape(storeNamePart); err == nil {
+				storeNamePart = decodedPart
+			}
+			
+			// Replace + with spaces (common in URL encoding)
+			storeNamePart = strings.ReplaceAll(storeNamePart, "+", " ")
+			
+			// Remove any @coordinates suffix
+			if atIndex := strings.Index(storeNamePart, "@"); atIndex != -1 {
+				storeNamePart = storeNamePart[:atIndex]
+			}
+			
+			fmt.Printf("DEBUG: Decoded store name part: '%s'\n", storeNamePart)
+			
+			// For complex URLs with address + store name, try to extract the actual store name
+			storeName := extractStoreNameFromComplexPath(storeNamePart)
+			if storeName == "" {
+				storeName = storeNamePart
+			}
+			
+			// Clean up any invalid characters or patterns
+			storeName = cleanStoreName(storeName)
+			cleanedName := strings.TrimSpace(storeName)
+			
+			// Validate the extracted store name
+			if cleanedName != "" && isValidStoreName(cleanedName) {
+				fmt.Printf("DEBUG: Extracted store name from path: '%s'\n", cleanedName)
+				return cleanedName
+			} else {
+				fmt.Printf("DEBUG: Invalid store name extracted: '%s'\n", cleanedName)
 			}
 		}
 	}
-
 	return ""
 }
 
-// isValidAddress checks if the address is valid
-func isValidAddress(address string) bool {
-	if address == "" || len(address) < 3 {
-		return false
+// extractStoreNameFromComplexPath extracts store name from complex path that may contain address + store name
+func extractStoreNameFromComplexPath(decodedPath string) string {
+	// For Japanese addresses, the store name is often at the end after the address
+	// Common patterns:
+	// 1. "〒123-4567 都道府県市区町村 店舗名"
+	// 2. "住所情報 店舗名"
+	
+	// 郵便番号は後の処理で使うため削除しない
+	// // Remove postal code at the beginning if present
+	// if strings.HasPrefix(decodedPath, "〒") {
+	// 	// Find the end of postal code pattern: 〒xxx-xxxx
+	// 	if match := regexp.MustCompile(`^〒\d{3}-\d{4}\s*`).FindString(decodedPath); match != "" {
+	// 		decodedPath = strings.TrimSpace(decodedPath[len(match):])
+	// 	}
+	// }
+	// fmt.Printf("DEBUG: After postal code removal: '%s'\n", decodedPath)
+	
+	// Split by common separators and try to identify the store name
+	parts := strings.Fields(decodedPath)
+	if len(parts) == 0 {
+		return ""
 	}
 	
-	// Check for invalid patterns
-	invalidPatterns := []string{
-		"[[", "]]", "null", "{", "}", "[null",
-		"google.com", "maps.google", "data-",
-		"aria-", "class=", "id=", "onclick=",
-		"javascript:", "function(", "var ",
-		"undefined", "NaN", "Infinity",
-	}
+	// For Japanese addresses, address components often end with specific kanji
+	// Store name is usually the part that doesn't end with these characters
+	addressEndings := []string{"都", "道", "府", "県", "市", "区", "町", "村", "丁目", "番地", "号"}
 	
-	lowerAddress := strings.ToLower(address)
-	for _, pattern := range invalidPatterns {
-		if strings.Contains(lowerAddress, pattern) {
-			fmt.Printf("DEBUG: Address rejected due to invalid pattern '%s': %s\n", pattern, address)
-			return false
+	var potentialStoreName string
+	
+	// Look for parts that don't end with address indicators
+	for i := len(parts) - 1; i >= 0; i-- {
+		part := parts[i]
+		isAddressPart := false
+		
+		// Check if this part ends with address indicators
+		for _, ending := range addressEndings {
+			if strings.HasSuffix(part, ending) {
+				isAddressPart = true
+				break
+			}
 		}
-	}
-	
-	// Check for minimum length and meaningful content
-	if len(strings.TrimSpace(address)) < 5 {
-		fmt.Printf("DEBUG: Address too short: %s\n", address)
-		return false
-	}
-	
-	// Check if it contains recognizable address components
-	addressIndicators := []string{
-		"都", "道", "府", "県", "市", "区", "町", "村",
-		"丁目", "番地", "号", "番", "条", "丁", "目",
-		"街", "通", "路", "駅", "店", "ビル", "マンション",
-		"Japan", "Prefecture", "City", "District",
-	}
-	
-	hasIndicator := false
-	for _, indicator := range addressIndicators {
-		if strings.Contains(address, indicator) {
-			hasIndicator = true
+		
+		// Also check for number-only parts (likely address numbers)
+		if regexp.MustCompile(`^[\d０-９]+$`).MatchString(part) {
+			isAddressPart = true
+		}
+		
+		if !isAddressPart && len(part) > 1 {
+			// This could be the store name
+			if potentialStoreName == "" {
+				potentialStoreName = part
+			} else {
+				potentialStoreName = part + " " + potentialStoreName
+			}
+		} else if potentialStoreName != "" {
+			// We found address parts after finding a potential store name, so we can stop
 			break
 		}
 	}
 	
-	if !hasIndicator {
-		fmt.Printf("DEBUG: Address lacks location indicators: %s\n", address)
-		return false
+	fmt.Printf("DEBUG: Potential store name from complex path: '%s'\n", potentialStoreName)
+	
+	if potentialStoreName != "" && len(potentialStoreName) > 1 {
+		return potentialStoreName
 	}
 	
-	// Check character composition
-	validChars := 0
-	for _, r := range address {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
-		   (r >= '0' && r <= '9') || (r >= '\u3040' && r <= '\u309F') || 
-		   (r >= '\u30A0' && r <= '\u30FF') || (r >= '\u4E00' && r <= '\u9FAF') ||
-		   r == ' ' || r == '、' || r == '。' || r == '-' || r == '〒' || r == '／' || r == '−' {
-			validChars++
-		}
+	// Fallback: if we can't identify the store name, take the last meaningful part
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
 	}
 	
-	// Address should have at least 60% valid characters
-	isValid := float64(validChars)/float64(len(address)) >= 0.6
-	if !isValid {
-		fmt.Printf("DEBUG: Address failed character composition test: %s (valid: %d/%d)\n", address, validChars, len(address))
-	}
-	
-	return isValid
+	return ""
 }
 
-// extractStoreNameFromPath extracts store name from URL path
-func extractStoreNameFromPath(path string) string {
-	// Google Maps URLs format: /maps/place/Store+Name/...
-	parts := strings.Split(path, "/")
-	for i, part := range parts {
-		if part == "place" && i+1 < len(parts) {
-			// Decode URL-encoded store name
-			storeName, err := url.QueryUnescape(parts[i+1])
-			if err == nil {
-				// Replace + with spaces and clean up
-				storeName = strings.ReplaceAll(storeName, "+", " ")
-				// Remove any @coordinates suffix
-				if atIndex := strings.Index(storeName, "@"); atIndex != -1 {
-					storeName = storeName[:atIndex]
-				}
-				// Clean up any invalid characters or patterns
-				storeName = cleanStoreName(storeName)
-				return strings.TrimSpace(storeName)
+// extractStoreNameFromDecodedURL extracts store name from fully decoded URL
+func extractStoreNameFromDecodedURL(decodedURL string) string {
+	// Look for /place/ in the decoded URL
+	if !strings.Contains(decodedURL, "/place/") {
+		return ""
+	}
+	
+	// Extract the part after /place/
+	parts := strings.Split(decodedURL, "/place/")
+	if len(parts) < 2 {
+		return ""
+	}
+	
+	// Get the path part after /place/
+	pathPart := parts[1]
+	
+	// Remove any parameters that come after the place name
+	if paramIndex := strings.Index(pathPart, "/data="); paramIndex != -1 {
+		pathPart = pathPart[:paramIndex]
+	}
+	if paramIndex := strings.Index(pathPart, "?"); paramIndex != -1 {
+		pathPart = pathPart[:paramIndex]
+	}
+	
+	fmt.Printf("DEBUG: Path part for store name extraction: '%s'\n", pathPart)
+	
+	// Use the complex path extraction logic
+	storeName := extractStoreNameFromComplexPath(pathPart)
+	if storeName != "" && isValidStoreName(storeName) {
+		return storeName
+	}
+	
+	return ""
+}
+
+// extractPlaceIDFromURL extracts Place ID from Google Maps URL
+func extractPlaceIDFromURL(mapURL string) string {
+	fmt.Printf("DEBUG: Extracting Place ID from URL: %s\n", mapURL)
+	
+	// Look for Place ID in data parameter (newer format)
+	if strings.Contains(mapURL, "1s0x") && strings.Contains(mapURL, ":0x") {
+		// Format: 1s0x6001078b6e352ab1:0x1869084cc73893fc
+		pattern := regexp.MustCompile(`1s(0x[a-fA-F0-9]+:0x[a-fA-F0-9]+)`)
+		matches := pattern.FindStringSubmatch(mapURL)
+		if len(matches) >= 2 {
+			cid := matches[1]
+			fmt.Printf("DEBUG: Found CID format: %s\n", cid)
+			// Convert CID to Place ID using Places API Text Search
+			if placeID, err := convertCIDToPlaceID(cid); err == nil && placeID != "" {
+				fmt.Printf("DEBUG: Successfully converted CID to Place ID: %s\n", placeID)
+				return placeID
+			} else {
+				fmt.Printf("DEBUG: Failed to convert CID to Place ID: %v\n", err)
 			}
 		}
 	}
+	
+	// Look for ftid parameter (Place ID)
+	if strings.Contains(mapURL, "ftid=") {
+		pattern := regexp.MustCompile(`ftid=([a-zA-Z0-9_-]+)`)
+		matches := pattern.FindStringSubmatch(mapURL)
+		if len(matches) >= 2 {
+			return matches[1]
+		}
+	}
+	
+	// Look for Place ID in other formats
+	patterns := []string{
+		`place_id:([a-zA-Z0-9_-]+)`,     // place_id:ID
+		`!1s([a-zA-Z0-9_-]+)!`,          // !1sID!
+		`data=.*!1m.*!1s([a-zA-Z0-9_-]+)`, // data parameter with Place ID
+	}
+	
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(mapURL)
+		if len(matches) >= 2 {
+			return matches[1]
+		}
+	}
+	
 	return ""
+}
+
+// convertCIDToPlaceID converts CID format to coordinates by decoding the hexadecimal values
+func convertCIDToPlaceID(cid string) (string, error) {
+	// CID format: 0x6001078ce753f549:0x51a6cbb1594b20db
+	// The first part encodes latitude, the second part encodes longitude
+	
+	parts := strings.Split(cid, ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid CID format: %s", cid)
+	}
+	
+	// For simplicity, we'll fallback to coordinate extraction from the URL
+	// since CID decoding requires complex mathematical conversion
+	fmt.Printf("DEBUG: CID found but using coordinate extraction fallback for: %s\n", cid)
+	return "", fmt.Errorf("using coordinate extraction fallback for CID: %s", cid)
+}
+
+// getCoordinatesFromPlaceID gets coordinates using Places API (New)
+func getCoordinatesFromPlaceID(placeID string) (float64, float64, error) {
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey == "" {
+		return 0, 0, fmt.Errorf("Google Maps API key not found")
+	}
+	
+	// Use Places API (New) to get place details
+	detailsURL := fmt.Sprintf("https://places.googleapis.com/v1/places/%s?fields=location&languageCode=ja&key=%s", placeID, apiKey)
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(detailsURL)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to make details request: %v", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("details API returned status: %d", resp.StatusCode)
+	}
+	
+	var detailsResp struct {
+		Location struct {
+			Latitude  float64 `json:"latitude"`
+			Longitude float64 `json:"longitude"`
+		} `json:"location"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&detailsResp); err != nil {
+		return 0, 0, fmt.Errorf("failed to decode details response: %v", err)
+	}
+	
+	return detailsResp.Location.Latitude, detailsResp.Location.Longitude, nil
 }
 
 // extractCoordinatesFromURL extracts latitude and longitude from Google Maps URL
 func extractCoordinatesFromURL(mapURL string) (float64, float64, error) {
-	// Look for coordinates in various formats
-	patterns := []string{
-		`@(-?\d+\.\d+),(-?\d+\.\d+)`,           // @lat,lng
-		`!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)`,       // !3dlat!4dlng
-		`ll=(-?\d+\.\d+),(-?\d+\.\d+)`,         // ll=lat,lng
-		`center=(-?\d+\.\d+),(-?\d+\.\d+)`,     // center=lat,lng
+	// First, try to extract Place ID from the URL and use Places API
+	if placeID := extractPlaceIDFromURL(mapURL); placeID != "" {
+		fmt.Printf("DEBUG: Found Place ID in URL: %s\n", placeID)
+		lat, lng, err := getCoordinatesFromPlaceID(placeID)
+		if err == nil {
+			fmt.Printf("DEBUG: Successfully got coordinates from Place ID: %f, %f\n", lat, lng)
+			return lat, lng, nil
+		}
+		fmt.Printf("DEBUG: Failed to get coordinates from Place ID: %v\n", err)
 	}
 
-	for _, pattern := range patterns {
+	// Look for coordinates in various formats
+	patterns := []string{
+		`@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)`,     // @lat,lng (small decimal places optional)
+		`/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),`,   // /@lat,lng, (with zoom level)
+		`!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)`,           // !3dlat!4dlng
+		`ll=(-?\d+\.\d+),(-?\d+\.\d+)`,             // ll=lat,lng
+		`center=(-?\d+\.\d+),(-?\d+\.\d+)`,         // center=lat,lng
+	}
+
+	for i, pattern := range patterns {
 		re := regexp.MustCompile(pattern)
 		matches := re.FindStringSubmatch(mapURL)
 		if len(matches) >= 3 {
 			lat, err1 := strconv.ParseFloat(matches[1], 64)
 			lng, err2 := strconv.ParseFloat(matches[2], 64)
 			if err1 == nil && err2 == nil {
+				fmt.Printf("DEBUG: Coordinate pattern %d matched - Lat: %f, Lng: %f\n", i, lat, lng)
 				return lat, lng, nil
 			}
 		}
 	}
 
+	// If URL patterns fail, try to extract from HTML content (for HTMLスクレイピング cases)
+	lat, lng, err := extractCoordinatesFromHTML(mapURL)
+	if err == nil {
+		fmt.Printf("DEBUG: Coordinates extracted from HTML - Lat: %f, Lng: %f\n", lat, lng)
+		return lat, lng, nil
+	}
+
+	fmt.Printf("DEBUG: All coordinate extraction methods failed for URL: %s\n", mapURL)
 	return 0, 0, fmt.Errorf("coordinates not found in URL")
 }
 
-// extractAdditionalInfoFromPage attempts to extract additional information from the Google Maps page
-func extractAdditionalInfoFromPage(mapURL string) (address, websiteURL, storeName string, err error) {
+// extractCoordinatesFromHTML extracts coordinates from HTML page content
+func extractCoordinatesFromHTML(mapURL string) (float64, float64, error) {
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -494,7 +975,7 @@ func extractAdditionalInfoFromPage(mapURL string) (address, websiteURL, storeNam
 	// Make request to Google Maps URL
 	req, err := http.NewRequest("GET", mapURL, nil)
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to create request: %v", err)
+		return 0, 0, fmt.Errorf("failed to create request: %v", err)
 	}
 
 	// Set user agent to avoid blocking
@@ -502,162 +983,232 @@ func extractAdditionalInfoFromPage(mapURL string) (address, websiteURL, storeNam
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to fetch page: %v", err)
+		return 0, 0, fmt.Errorf("failed to fetch page: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return 0, 0, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to read response body: %v", err)
+		return 0, 0, fmt.Errorf("failed to read response body: %v", err)
 	}
 
-	pageContent := string(body)
-	
-	// Debug: Print samples of HTML content to understand structure
-	fmt.Printf("DEBUG: HTML length: %d characters\n", len(pageContent))
-	
-	// Look for postal code (〒) patterns in HTML
-	keyword := "〒"
-	keywordIndex := strings.Index(pageContent, keyword)
-	if keywordIndex != -1 {
-		start := keywordIndex - 100
-		if start < 0 {
-			start = 0
+	htmlContent := string(body)
+	fmt.Printf("DEBUG: HTML content length for coordinate extraction: %d characters\n", len(htmlContent))
+
+	// Pattern 1: JSON array format like [[209103.37989011017,135.7217792,35.0257152],[0,0,0],[1024,768],13.1]
+	jsonPattern := `\[\[[\d\.]+,(-?\d+\.\d+),(-?\d+\.\d+)\]`
+	re := regexp.MustCompile(jsonPattern)
+	matches := re.FindStringSubmatch(htmlContent)
+	if len(matches) >= 3 {
+		lng, err1 := strconv.ParseFloat(matches[1], 64)
+		lat, err2 := strconv.ParseFloat(matches[2], 64)
+		if err1 == nil && err2 == nil {
+			fmt.Printf("DEBUG: JSON pattern matched - Lng: %f, Lat: %f\n", lng, lat)
+			return lat, lng, nil
 		}
-		end := keywordIndex + 200
-		if end > len(pageContent) {
-			end = len(pageContent)
-		}
-		fmt.Printf("DEBUG: HTML sample around '%s': %s\n", keyword, pageContent[start:end])
-	} else {
-		fmt.Printf("DEBUG: No postal code '〒' found in HTML\n")
 	}
 
-	// Extract address using regex patterns
-	address = extractAddressFromHTML(pageContent)
-	fmt.Printf("DEBUG: Extracted address: '%s'\n", address)
-	if address == "" {
-		address = "Address not available"
+	// Pattern 2: Look for coordinates in script tags or data attributes
+	scriptPatterns := []string{
+		`"lat":(-?\d+\.\d+),"lng":(-?\d+\.\d+)`,              // {"lat":35.123,"lng":135.456}
+		`latitude["\s]*[:=]\s*(-?\d+\.\d+)[\s\S]*?longitude["\s]*[:=]\s*(-?\d+\.\d+)`, // latitude:35.123 longitude:135.456
+		`center.*?(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)`,            // center: 35.123, 135.456
 	}
 
-	// Extract website URL using regex patterns
-	websiteURL = extractWebsiteFromHTML(pageContent)
-	
-	// Extract store name from HTML
-	storeName = extractStoreNameFromHTML(pageContent)
-
-	return address, websiteURL, storeName, nil
-}
-
-// extractAddressFromHTML extracts address from HTML content
-func extractAddressFromHTML(html string) string {
-	// Look for addresses starting with 〒 (postal code) - highest priority
-	postalPatterns := []string{
-		// Addresses starting with 〒 in various HTML contexts
-		`"([^"]*〒[^"]*)"`,                      // JSON format with postal code
-		`>([^<]*〒[^<]*)</[^>]*>`,               // Any HTML tag containing postal address
-		`<div[^>]*>([^<]*〒[^<]*)</div>`,        // Div containing postal address
-		`<span[^>]*>([^<]*〒[^<]*)</span>`,      // Span containing postal address
-		`<button[^>]*>.*?([^<]*〒[^<]*).*?</button>`, // Button containing postal address
-		`data-value="([^"]*〒[^"]*)"`,           // Data attribute with postal address
-		`aria-label="[^"]*([^"]*〒[^"]*)"`,      // Aria label with postal address
-		`content="([^"]*〒[^"]*)"`,              // Meta content with postal address
-		
-		// More flexible patterns for postal addresses
-		`([^>\s"]*〒\s*\d{3}-?\d{4}[^<"]*[都道府県][^<"]*[市区町村][^<"]*)`, // Complete postal address
-		`([^>\s"]*〒\s*\d{3}-?\d{4}[^<"]*)`,     // Any postal code pattern
-	}
-	
-	fmt.Printf("DEBUG: Searching for addresses starting with 〒\n")
-	
-	for i, pattern := range postalPatterns {
+	for i, pattern := range scriptPatterns {
 		re := regexp.MustCompile(pattern)
-		matches := re.FindAllStringSubmatch(html, -1) // Find all matches
-		
-		for _, match := range matches {
-			if len(match) >= 2 {
-				address := strings.TrimSpace(match[1])
-				fmt.Printf("DEBUG: Postal pattern %d found potential address: '%s'\n", i, address)
-				
-				// Check if address starts with 〒
-				if strings.HasPrefix(address, "〒") && isValidPostalAddress(address) {
-					fmt.Printf("DEBUG: Valid postal address found: '%s'\n", address)
-					return address
-				}
+		matches := re.FindStringSubmatch(htmlContent)
+		if len(matches) >= 3 {
+			lat, err1 := strconv.ParseFloat(matches[1], 64)
+			lng, err2 := strconv.ParseFloat(matches[2], 64)
+			if err1 == nil && err2 == nil {
+				fmt.Printf("DEBUG: Script pattern %d matched - Lat: %f, Lng: %f\n", i, lat, lng)
+				return lat, lng, nil
 			}
 		}
 	}
-	
-	fmt.Printf("DEBUG: No addresses starting with 〒 found\n")
-	return ""
+
+	return 0, 0, fmt.Errorf("coordinates not found in HTML content")
 }
 
-// isValidPostalAddress checks if the postal address starting with 〒 is valid
-func isValidPostalAddress(address string) bool {
-	if address == "" || !strings.HasPrefix(address, "〒") {
-		return false
-	}
+// // extractAdditionalInfoFromPage attempts to extract additional information from the Google Maps page
+// func extractAdditionalInfoFromPage(mapURL string) (address, websiteURL, storeName string, err error) {
+// 	// Create HTTP client with timeout
+// 	client := &http.Client{
+// 		Timeout: 10 * time.Second,
+// 	}
+
+// 	// Make request to Google Maps URL
+// 	req, err := http.NewRequest("GET", mapURL, nil)
+// 	if err != nil {
+// 		return "", "", "", fmt.Errorf("failed to create request: %v", err)
+// 	}
+
+// 	// Set user agent to avoid blocking
+// 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return "", "", "", fmt.Errorf("failed to fetch page: %v", err)
+// 	}
+// 	defer resp.Body.Close()
+
+// 	if resp.StatusCode != http.StatusOK {
+// 		return "", "", "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+// 	}
+
+// 	// Read response body
+// 	body, err := io.ReadAll(resp.Body)
+// 	if err != nil {
+// 		return "", "", "", fmt.Errorf("failed to read response body: %v", err)
+// 	}
+
+// 	pageContent := string(body)
 	
-	// Check for minimum length
-	if len(address) < 8 { // 〒 + 3 digits + - + 4 digits minimum
-		fmt.Printf("DEBUG: Postal address too short: %s\n", address)
-		return false
-	}
+// 	// Debug: Print samples of HTML content to understand structure
+// 	fmt.Printf("DEBUG: HTML length: %d characters\n", len(pageContent))
 	
-	// Check for invalid patterns
-	invalidPatterns := []string{
-		"[[", "]]", "null", "{", "}", "[null",
-		"google.com", "maps.google", "data-",
-		"aria-", "class=", "id=", "onclick=",
-		"javascript:", "function(", "var ",
-		"undefined", "NaN", "Infinity",
-	}
+// 	// Look for postal code (〒) patterns in HTML
+// 	keyword := "〒"
+// 	keywordIndex := strings.Index(pageContent, keyword)
+// 	if keywordIndex != -1 {
+// 		start := keywordIndex - 100
+// 		if start < 0 {
+// 			start = 0
+// 		}
+// 		end := keywordIndex + 200
+// 		if end > len(pageContent) {
+// 			end = len(pageContent)
+// 		}
+// 		fmt.Printf("DEBUG: HTML sample around '%s': %s\n", keyword, pageContent[start:end])
+// 	} else {
+// 		fmt.Printf("DEBUG: No postal code '〒' found in HTML\n")
+// 	}
+
+// 	// Extract address using regex patterns
+// 	address = extractAddressFromHTML(pageContent)
+// 	fmt.Printf("DEBUG: Extracted address: '%s'\n", address)
+// 	if address == "" {
+// 		address = "Address not available"
+// 	}
+
+// 	// Extract website URL using regex patterns
+// 	websiteURL = extractWebsiteFromHTML(pageContent)
 	
-	lowerAddress := strings.ToLower(address)
-	for _, pattern := range invalidPatterns {
-		if strings.Contains(lowerAddress, pattern) {
-			fmt.Printf("DEBUG: Postal address rejected due to invalid pattern '%s': %s\n", pattern, address)
-			return false
-		}
-	}
+// 	// Extract store name from HTML
+// 	storeName = extractStoreNameFromHTML(pageContent)
+
+// 	return address, websiteURL, storeName, nil
+// }
+
+// // extractAddressFromHTML extracts address from HTML content
+// func extractAddressFromHTML(html string) string {
+// 	// Look for addresses starting with 〒 (postal code) - highest priority
+// 	postalPatterns := []string{
+// 		// Addresses starting with 〒 in various HTML contexts
+// 		`"([^"]*〒[^"]*)"`,                      // JSON format with postal code
+// 		`>([^<]*〒[^<]*)</[^>]*>`,               // Any HTML tag containing postal address
+// 		`<div[^>]*>([^<]*〒[^<]*)</div>`,        // Div containing postal address
+// 		`<span[^>]*>([^<]*〒[^<]*)</span>`,      // Span containing postal address
+// 		`<button[^>]*>.*?([^<]*〒[^<]*).*?</button>`, // Button containing postal address
+// 		`data-value="([^"]*〒[^"]*)"`,           // Data attribute with postal address
+// 		`aria-label="[^"]*([^"]*〒[^"]*)"`,      // Aria label with postal address
+// 		`content="([^"]*〒[^"]*)"`,              // Meta content with postal address
+		
+// 		// More flexible patterns for postal addresses
+// 		`([^>\s"]*〒\s*\d{3}-?\d{4}[^<"]*[都道府県][^<"]*[市区町村][^<"]*)`, // Complete postal address
+// 		`([^>\s"]*〒\s*\d{3}-?\d{4}[^<"]*)`,     // Any postal code pattern
+// 	}
 	
-	// Check for postal code pattern: 〒XXX-XXXX or 〒XXXXXXX
-	postalCodePattern := `〒\s*\d{3}-?\d{4}`
-	matched, _ := regexp.MatchString(postalCodePattern, address)
-	if !matched {
-		fmt.Printf("DEBUG: Invalid postal code format: %s\n", address)
-		return false
-	}
+// 	fmt.Printf("DEBUG: Searching for addresses starting with 〒\n")
 	
-	// Check if it contains meaningful address components
-	addressIndicators := []string{
-		"都", "道", "府", "県", "市", "区", "町", "村",
-		"丁目", "番地", "号", "番", "条", "丁", "目",
-		"街", "通", "路", "駅", "店", "ビル", "マンション",
-	}
+// 	for i, pattern := range postalPatterns {
+// 		re := regexp.MustCompile(pattern)
+// 		matches := re.FindAllStringSubmatch(html, -1) // Find all matches
+		
+// 		for _, match := range matches {
+// 			if len(match) >= 2 {
+// 				address := strings.TrimSpace(match[1])
+// 				fmt.Printf("DEBUG: Postal pattern %d found potential address: '%s'\n", i, address)
+				
+// 				// Check if address starts with 〒
+// 				if strings.HasPrefix(address, "〒") && isValidPostalAddress(address) {
+// 					fmt.Printf("DEBUG: Valid postal address found: '%s'\n", address)
+// 					return address
+// 				}
+// 			}
+// 		}
+// 	}
 	
-	hasIndicator := false
-	for _, indicator := range addressIndicators {
-		if strings.Contains(address, indicator) {
-			hasIndicator = true
-			break
-		}
-	}
+// 	fmt.Printf("DEBUG: No addresses starting with 〒 found\n")
+// 	return ""
+// }
+
+// // isValidPostalAddress checks if the postal address starting with 〒 is valid
+// func isValidPostalAddress(address string) bool {
+// 	if address == "" || !strings.HasPrefix(address, "〒") {
+// 		return false
+// 	}
 	
-	if !hasIndicator {
-		fmt.Printf("DEBUG: Postal address lacks location indicators: %s\n", address)
-		// For postal addresses, we're more lenient as they might be abbreviated
-		return len(address) >= 10 // Allow if it's reasonably long
-	}
+// 	// Check for minimum length
+// 	if len(address) < 8 { // 〒 + 3 digits + - + 4 digits minimum
+// 		fmt.Printf("DEBUG: Postal address too short: %s\n", address)
+// 		return false
+// 	}
 	
-	fmt.Printf("DEBUG: Postal address validation passed: %s\n", address)
-	return true
-}
+// 	// Check for invalid patterns
+// 	invalidPatterns := []string{
+// 		"[[", "]]", "null", "{", "}", "[null",
+// 		"google.com", "maps.google", "data-",
+// 		"aria-", "class=", "id=", "onclick=",
+// 		"javascript:", "function(", "var ",
+// 		"undefined", "NaN", "Infinity",
+// 	}
+	
+// 	lowerAddress := strings.ToLower(address)
+// 	for _, pattern := range invalidPatterns {
+// 		if strings.Contains(lowerAddress, pattern) {
+// 			fmt.Printf("DEBUG: Postal address rejected due to invalid pattern '%s': %s\n", pattern, address)
+// 			return false
+// 		}
+// 	}
+	
+// 	// Check for postal code pattern: 〒XXX-XXXX or 〒XXXXXXX
+// 	postalCodePattern := `〒\s*\d{3}-?\d{4}`
+// 	matched, _ := regexp.MatchString(postalCodePattern, address)
+// 	if !matched {
+// 		fmt.Printf("DEBUG: Invalid postal code format: %s\n", address)
+// 		return false
+// 	}
+	
+// 	// Check if it contains meaningful address components
+// 	addressIndicators := []string{
+// 		"都", "道", "府", "県", "市", "区", "町", "村",
+// 		"丁目", "番地", "号", "番", "条", "丁", "目",
+// 		"街", "通", "路", "駅", "店", "ビル", "マンション",
+// 	}
+	
+// 	hasIndicator := false
+// 	for _, indicator := range addressIndicators {
+// 		if strings.Contains(address, indicator) {
+// 			hasIndicator = true
+// 			break
+// 		}
+// 	}
+	
+// 	if !hasIndicator {
+// 		fmt.Printf("DEBUG: Postal address lacks location indicators: %s\n", address)
+// 		// For postal addresses, we're more lenient as they might be abbreviated
+// 		return len(address) >= 10 // Allow if it's reasonably long
+// 	}
+	
+// 	fmt.Printf("DEBUG: Postal address validation passed: %s\n", address)
+// 	return true
+// }
 
 // Google Maps Places API (New) response structures
 type PlaceDetailNew struct {
@@ -689,260 +1240,56 @@ type PlaceOpeningHoursNew struct {
 	WeekdayText []string `json:"weekdayDescriptions"`
 }
 
-// getPlaceDetailsFromAPI gets place details using Google Maps Places API
-func getPlaceDetailsFromAPI(mapURL string) (string, string, string, float64, float64, string, error) {
-	
-	// Extract Place ID from URL
-	placeID, err := extractPlaceIDFromURL(mapURL)
-	if err != nil {
-		return "", "", "", 0, 0, "", fmt.Errorf("failed to extract place ID: %v", err)
-	}
-	
-	// If the extracted ID is in CID format (0x...), we MUST convert it to standard Place ID
-	// because Places API (New) doesn't support CID format directly
-	if strings.HasPrefix(placeID, "0x") {
-		fmt.Printf("DEBUG: Detected CID format: %s, MUST convert to standard Place ID via Text Search\n", placeID)
-		standardPlaceID, err := findPlaceIDByTextSearch(mapURL, placeID)
-		if err != nil {
-			fmt.Printf("DEBUG: Text Search failed: %v, cannot proceed with CID format\n", err)
-			return "", "", "", 0, 0, "", fmt.Errorf("CID format not supported by new API, and Text Search failed: %v", err)
-		} else {
-			placeID = standardPlaceID
-			fmt.Printf("DEBUG: Successfully converted CID to standard Place ID: %s\n", placeID)
-		}
-	}
-
-	// Get API key from environment
-	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
-	fmt.Printf("DEBUG: Retrieved API key from environment: '%s'\n", apiKey)
-	if apiKey == "" || apiKey == "your_google_maps_api_key_here" {
-		fmt.Printf("DEBUG: API key is empty or default value. Available env vars:\n")
-		for _, env := range os.Environ() {
-			if strings.Contains(env, "GOOGLE") || strings.Contains(env, "API") {
-				fmt.Printf("DEBUG: %s\n", env)
-			}
-		}
-		return "", "", "", 0, 0, "", fmt.Errorf("google Maps API key not configured")
-	}
-
-	// Build Places API (New) URL
-	placesURL := fmt.Sprintf("https://places.googleapis.com/v1/places/%s?languageCode=ja", placeID)
-	fmt.Printf("DEBUG: Places API (New) URL: %s\n", placesURL)
-
-	// Make API request with POST method for Places API (New)
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", placesURL, nil)
-	if err != nil {
-		return "", "", "", 0, 0, "", fmt.Errorf("failed to create request: %v", err)
-	}
-
-	// Set headers for Places API (New)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goog-Api-Key", apiKey)
-	req.Header.Set("X-Goog-FieldMask", "id,displayName,formattedAddress,location,websiteUri,nationalPhoneNumber,regularOpeningHours,priceLevel,rating,types,businessStatus")
-	
-	fmt.Printf("DEBUG: Making GET request to %s with Place ID: %s\n", placesURL, placeID)
-	fmt.Printf("DEBUG: API Key prefix: %s...\n", apiKey[:10])
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", "", "", 0, 0, "", fmt.Errorf("failed to make Places API request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// Read error response body for debugging
-		errorBody, _ := io.ReadAll(resp.Body)
-		fmt.Printf("DEBUG: Places API error response (status %d): %s\n", resp.StatusCode, string(errorBody))
-		return "", "", "", 0, 0, "", fmt.Errorf("places API returned status: %d", resp.StatusCode)
-	}
-
-	// Read and parse response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", "", 0, 0, "", fmt.Errorf("failed to read Places API response: %v", err)
-	}
-
-	fmt.Printf("DEBUG: Raw Places API (New) response: %s\n", string(body))
-
-	var place PlaceDetailNew
-	if err := json.Unmarshal(body, &place); err != nil {
-		return "", "", "", 0, 0, "", fmt.Errorf("failed to parse Places API response: %v", err)
-	}
-
-	// Extract information from the new API response format
-	var storeName, address, websiteURL, businessHours string
-	var lat, lng float64
-	
-	// Safely extract display name
-	if place.DisplayName != nil && place.DisplayName.Text != "" {
-		storeName = place.DisplayName.Text
-	}
-	
-	// Safely extract address
-	if place.FormattedAddress != "" {
-		address = place.FormattedAddress
-	}
-	
-	// Safely extract website
-	if place.WebsiteUri != "" {
-		websiteURL = place.WebsiteUri
-	}
-	
-	// Safely extract coordinates
-	if place.Location != nil {
-		lat = place.Location.Latitude
-		lng = place.Location.Longitude
-	}
-	
-	// Safely extract business hours
-	if place.OpeningHours != nil && len(place.OpeningHours.WeekdayText) > 0 {
-		fmt.Printf("DEBUG: Found %d weekday descriptions\n", len(place.OpeningHours.WeekdayText))
-		for i, desc := range place.OpeningHours.WeekdayText {
-			fmt.Printf("DEBUG: WeekdayText[%d]: %s\n", i, desc)
-		}
-		businessHoursData := parseBusinessHoursFromWeekdayDescriptions(place.OpeningHours.WeekdayText)
-		// Convert to JSON string for temporary compatibility
-		businessHoursJSON, _ := json.Marshal(businessHoursData)
-		businessHours = string(businessHoursJSON)
-		fmt.Printf("DEBUG: Parsed business hours JSON: %s\n", businessHours)
-	} else {
-		businessHours = "営業時間: 11:00-22:00\nラストオーダー: 21:30\n定休日: 年中無休"
-		fmt.Printf("DEBUG: No business hours found, using default legacy format\n")
-	}
-
-	fmt.Printf("DEBUG: Places API (New) returned - Name: '%s', Address: '%s', Website: '%s', Location: (%f, %f), Business Hours: %s\n", 
-		storeName, address, websiteURL, lat, lng, businessHours)
-
-	// Check if we got meaningful data
-	if storeName == "" && address == "" {
-		return "", "", "", 0, 0, "", fmt.Errorf("API returned empty data for place ID: %s", placeID)
-	}
-
-	fmt.Printf("DEBUG: Places API SUCCESS - returning data\n")
-	return address, websiteURL, storeName, lat, lng, businessHours, nil
-}
-
 // parseBusinessHoursFromWeekdayDescriptions parses Google Maps weekdayDescriptions into detailed business hours struct
 func parseBusinessHoursFromWeekdayDescriptions(weekdayDescriptions []string) models.BusinessHoursData {
 	if len(weekdayDescriptions) == 0 {
 		return getDefaultBusinessHoursData()
 	}
 
-	// Day mapping from English and Japanese to internal keys
-	dayMapping := map[string]string{
-		"Monday":    "monday",
-		"Tuesday":   "tuesday", 
-		"Wednesday": "wednesday",
-		"Thursday":  "thursday",
-		"Friday":    "friday",
-		"Saturday":  "saturday",
-		"Sunday":    "sunday",
-		"月曜日":      "monday",
-		"火曜日":      "tuesday",
-		"水曜日":      "wednesday",
-		"木曜日":      "thursday",
-		"金曜日":      "friday",
-		"土曜日":      "saturday",
-		"日曜日":      "sunday",
-	}
-
-	// Initialize business hours structure
-	businessHours := models.BusinessHoursData{
-		Monday:    models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
-		Tuesday:   models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
-		Wednesday: models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
-		Thursday:  models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
-		Friday:    models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
-		Saturday:  models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
-		Sunday:    models.DaySchedule{IsClosed: false, TimeSlots: []models.TimeSlot{}},
+	businessHours := models.BusinessHoursData{}
+	
+	// Map of weekday keys to their corresponding day schedule
+	dayMap := map[string]*models.DaySchedule{
+		"monday":    &businessHours.Monday,
+		"tuesday":   &businessHours.Tuesday,
+		"wednesday": &businessHours.Wednesday,
+		"thursday":  &businessHours.Thursday,
+		"friday":    &businessHours.Friday,
+		"saturday":  &businessHours.Saturday,
+		"sunday":    &businessHours.Sunday,
 	}
 	
-	for _, desc := range weekdayDescriptions {
-		fmt.Printf("DEBUG: Processing weekday description: %s\n", desc)
-		
-		// Extract day name
-		var dayKey string
-		for dayName, key := range dayMapping {
-			if strings.HasPrefix(desc, dayName) || strings.Contains(desc, dayName) {
-				dayKey = key
-				fmt.Printf("DEBUG: Found day '%s' -> '%s' in description: %s\n", dayName, key, desc)
-				break
+	// Parse each weekday description
+	for i, desc := range weekdayDescriptions {
+		dayKey := getDayKeyFromIndex(i)
+		if daySchedule, exists := dayMap[dayKey]; exists {
+			if strings.Contains(desc, "定休日") || strings.Contains(desc, "休業") {
+				daySchedule.IsClosed = true
+				daySchedule.TimeSlots = []models.TimeSlot{}
+			} else {
+				daySchedule.IsClosed = false
+				// Parse time ranges from description
+				timeRanges := parseDetailedTimeRanges(desc)
+				if len(timeRanges) == 0 {
+					// Default time slot if parsing fails
+					timeRanges = []models.TimeSlot{{
+						OpenTime:  "11:00",
+						CloseTime: "22:00",
+					}}
+				}
+				daySchedule.TimeSlots = timeRanges
 			}
-		}
-		
-		if dayKey == "" {
-			fmt.Printf("DEBUG: No day key found for description: %s\n", desc)
-			continue
-		}
-		
-		// Get day schedule reference
-		daySchedule := getDayScheduleRef(&businessHours, dayKey)
-		if daySchedule == nil {
-			continue
-		}
-		
-		// Check if closed (English or Japanese)
-		if strings.Contains(desc, "Closed") || strings.Contains(desc, "定休日") {
-			daySchedule.IsClosed = true
-			daySchedule.TimeSlots = []models.TimeSlot{}
-			fmt.Printf("DEBUG: Day %s is closed (found 'Closed' or '定休日')\n", dayKey)
-			continue
-		}
-		
-		// Check if 24 hours
-		if strings.Contains(desc, "Open 24 hours") {
-			daySchedule.IsClosed = false
-			daySchedule.TimeSlots = []models.TimeSlot{{
-				OpenTime:      "00:00",
-				CloseTime:     "00:00",
-				LastOrderTime: "00:00",
-			}}
-			continue
-		}
-		
-		// Parse time ranges (handle multiple time ranges per day)
-		timeRanges := parseDetailedTimeRanges(desc)
-		if len(timeRanges) > 0 {
-			daySchedule.IsClosed = false
-			daySchedule.TimeSlots = timeRanges
 		}
 	}
 	
 	return businessHours
 }
 
-// getDayScheduleRef returns a reference to the day schedule
-func getDayScheduleRef(businessHours *models.BusinessHoursData, dayKey string) *models.DaySchedule {
-	switch dayKey {
-	case "monday":
-		return &businessHours.Monday
-	case "tuesday":
-		return &businessHours.Tuesday
-	case "wednesday":
-		return &businessHours.Wednesday
-	case "thursday":
-		return &businessHours.Thursday
-	case "friday":
-		return &businessHours.Friday
-	case "saturday":
-		return &businessHours.Saturday
-	case "sunday":
-		return &businessHours.Sunday
-	default:
-		return nil
-	}
-}
-
 // getDefaultBusinessHoursData returns default business hours struct
 func getDefaultBusinessHoursData() models.BusinessHoursData {
 	defaultSlot := models.TimeSlot{
-		OpenTime:      "11:00",
-		CloseTime:     "22:00",
-		LastOrderTime: "21:30",
+		OpenTime:  "11:00",
+		CloseTime: "22:00",
 	}
 	
 	return models.BusinessHoursData{
@@ -956,386 +1303,58 @@ func getDefaultBusinessHoursData() models.BusinessHoursData {
 	}
 }
 
+// getDayKeyFromIndex returns day key from weekday index
+func getDayKeyFromIndex(index int) string {
+	days := []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+	if index >= 0 && index < len(days) {
+		return days[index]
+	}
+	return "monday"
+}
+
 // parseDetailedTimeRanges extracts detailed time ranges from description text
 func parseDetailedTimeRanges(desc string) []models.TimeSlot {
 	var timeSlots []models.TimeSlot
 	
-	fmt.Printf("DEBUG: Parsing time ranges from description: %s\n", desc)
+	// Simple time pattern matching for Japanese format
+	// Example: "11時00分～20時00分"
+	timePattern := regexp.MustCompile(`(\d{1,2})時(\d{2})分～(\d{1,2})時(\d{2})分`)
+	matches := timePattern.FindAllStringSubmatch(desc, -1)
 	
-	// Handle Japanese format: "月曜日: 11時00分～20時00分" or "Tuesday: 11時00分～20時00分"
-	// Also handle English format: "6:00 AM – 10:00 PM"
-	// Split by comma first to handle multiple ranges
-	rangeParts := strings.Split(desc, ",")
-	
-	for _, part := range rangeParts {
-		part = strings.TrimSpace(part)
-		fmt.Printf("DEBUG: Processing time range part: %s\n", part)
-		
-		var openTime, closeTime string
-		
-		// Pattern 1: Japanese format with 時分 - "11時00分～20時00分"
-		jaTimePattern := regexp.MustCompile(`(\d{1,2})時(\d{2})分[～〜~\-–]+(\d{1,2})時(\d{2})分`)
-		jaMatches := jaTimePattern.FindStringSubmatch(part)
-		
-		if len(jaMatches) >= 5 {
-			startHour, _ := strconv.Atoi(jaMatches[1])
-			startMin, _ := strconv.Atoi(jaMatches[2])
-			endHour, _ := strconv.Atoi(jaMatches[3])
-			endMin, _ := strconv.Atoi(jaMatches[4])
+	for _, match := range matches {
+		if len(match) >= 5 {
+			openHour := match[1]
+			openMin := match[2]
+			closeHour := match[3]
+			closeMin := match[4]
 			
-			openTime = fmt.Sprintf("%02d:%02d", startHour, startMin)
-			closeTime = fmt.Sprintf("%02d:%02d", endHour, endMin)
-			
-			fmt.Printf("DEBUG: Japanese time pattern matched - Open: %s, Close: %s\n", openTime, closeTime)
-		} else {
-			// Pattern 2: English AM/PM format - "6:00 AM – 10:00 PM"
-			enTimePattern := regexp.MustCompile(`(\d{1,2}):(\d{2})\s*(AM|PM)?\s*[–\-～〜~]+\s*(\d{1,2}):(\d{2})\s*(AM|PM)?`)
-			enMatches := enTimePattern.FindStringSubmatch(part)
-			
-			if len(enMatches) >= 7 {
-				startHour, _ := strconv.Atoi(enMatches[1])
-				startMin, _ := strconv.Atoi(enMatches[2])
-				startPeriod := enMatches[3]
-				endHour, _ := strconv.Atoi(enMatches[4])
-				endMin, _ := strconv.Atoi(enMatches[5])
-				endPeriod := enMatches[6]
-				
-				// Convert to 24-hour format
-				openTime = convertTo24Hour(startHour, startMin, startPeriod)
-				closeTime = convertTo24Hour(endHour, endMin, endPeriod)
-				
-				fmt.Printf("DEBUG: English time pattern matched - Open: %s, Close: %s\n", openTime, closeTime)
-			} else {
-				fmt.Printf("DEBUG: No time pattern matched for: %s\n", part)
-				continue
+			timeSlot := models.TimeSlot{
+				OpenTime:  fmt.Sprintf("%02s:%s", openHour, openMin),
+				CloseTime: fmt.Sprintf("%02s:%s", closeHour, closeMin),
 			}
-		}
-		
-		if openTime != "" && closeTime != "" {
-			// Calculate last order time (30 minutes before close)
-			lastOrderTime := calculateLastOrderTime(closeTime)
-			
-			timeSlots = append(timeSlots, models.TimeSlot{
-				OpenTime:      openTime,
-				CloseTime:     closeTime,
-				LastOrderTime: lastOrderTime,
-			})
-			
-			fmt.Printf("DEBUG: Added time slot - Open: %s, Close: %s, LastOrder: %s\n", 
-				openTime, closeTime, lastOrderTime)
+			timeSlots = append(timeSlots, timeSlot)
 		}
 	}
 	
-	// Limit to maximum 3 time slots
-	if len(timeSlots) > 3 {
-		timeSlots = timeSlots[:3]
-	}
-	
-	fmt.Printf("DEBUG: Total time slots parsed: %d\n", len(timeSlots))
+	// If no time ranges found, return empty slice
 	return timeSlots
 }
 
-
-// convertTo24Hour converts 12-hour format to 24-hour format
-func convertTo24Hour(hour, minute int, period string) string {
-	if period == "PM" && hour != 12 {
-		hour += 12
-	} else if period == "AM" && hour == 12 {
-		hour = 0
-	}
-	
-	return fmt.Sprintf("%02d:%02d", hour, minute)
-}
-
-// calculateLastOrderTime calculates last order time (30 minutes before close)
-func calculateLastOrderTime(closeTime string) string {
-	// Parse close time
-	parts := strings.Split(closeTime, ":")
-	if len(parts) != 2 {
-		return "21:30"
-	}
-	
-	hour, err1 := strconv.Atoi(parts[0])
-	minute, err2 := strconv.Atoi(parts[1])
-	
-	if err1 != nil || err2 != nil {
-		return "21:30"
-	}
-	
-	// Handle 24-hour operation
-	if hour == 0 && minute == 0 {
-		return "00:00"
-	}
-	
-	// Subtract 30 minutes
-	minute -= 30
-	if minute < 0 {
-		minute += 60
-		hour -= 1
-		if hour < 0 {
-			hour = 23
-		}
-	}
-	
-	return fmt.Sprintf("%02d:%02d", hour, minute)
-}
-
-// parseBusinessHoursJSON parses business hours JSON string to struct
-func parseBusinessHoursJSON(jsonStr string) models.BusinessHoursData {
-	var businessHours models.BusinessHoursData
-	if err := json.Unmarshal([]byte(jsonStr), &businessHours); err != nil {
-		fmt.Printf("DEBUG: Failed to parse business hours JSON: %v\n", err)
-		return getDefaultBusinessHoursData()
-	}
-	return businessHours
-}
-
-// TextSearchResponse represents the response from Places API Text Search
-type TextSearchResponse struct {
-	Places []PlaceBasic `json:"places"`
-}
-
-type PlaceBasic struct {
-	ID          string           `json:"id"`
-	DisplayName PlaceDisplayName `json:"displayName"`
-	Location    PlaceLocationNew `json:"location"`
-}
-
-// findPlaceIDByTextSearch attempts to find a standard Place ID using Text Search API
-func findPlaceIDByTextSearch(mapURL, cid string) (string, error) {
-	// Extract place name and coordinates from URL for search
-	placeName := extractPlaceNameFromURL(mapURL)
-	lat, lng, err := extractCoordinatesFromURL(mapURL)
-	if err != nil || placeName == "" {
-		return "", fmt.Errorf("insufficient data for text search")
-	}
-
-	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
-	if apiKey == "" {
-		return "", fmt.Errorf("API key not available")
-	}
-
-	// Prepare Text Search request
-	searchURL := "https://places.googleapis.com/v1/places:searchText"
-	
-	requestBody := map[string]interface{}{
-		"textQuery": placeName,
-		"languageCode": "ja",
-		"locationBias": map[string]interface{}{
-			"circle": map[string]interface{}{
-				"center": map[string]float64{
-					"latitude":  lat,
-					"longitude": lng,
-				},
-				"radius": 1000.0, // 1km radius
-			},
-		},
-		"maxResultCount": 5,
-	}
-
-	requestJSON, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal search request: %v", err)
-	}
-
-	req, err := http.NewRequest("POST", searchURL, strings.NewReader(string(requestJSON)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create search request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goog-Api-Key", apiKey)
-	req.Header.Set("X-Goog-FieldMask", "places.id,places.displayName,places.location")
-	req.Header.Set("Accept-Language", "ja")
-	req.Header.Set("X-Goog-LanguageCode", "ja")
-	
-	fmt.Printf("DEBUG: Text Search request - placeName: '%s', coordinates: (%f, %f)\n", placeName, lat, lng)
-	fmt.Printf("DEBUG: Text Search request body: %s\n", string(requestJSON))
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to make search request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		errorBody, _ := io.ReadAll(resp.Body)
-		fmt.Printf("DEBUG: Text Search API error response (status %d): %s\n", resp.StatusCode, string(errorBody))
-		return "", fmt.Errorf("search API returned status: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read search response: %v", err)
-	}
-
-	var searchResp TextSearchResponse
-	if err := json.Unmarshal(body, &searchResp); err != nil {
-		return "", fmt.Errorf("failed to parse search response: %v", err)
-	}
-
-	if len(searchResp.Places) == 0 {
-		return "", fmt.Errorf("no places found in search")
-	}
-
-	// Return the first result's Place ID
-	bestPlace := searchResp.Places[0]
-	fmt.Printf("DEBUG: Text Search found Place ID: %s for '%s'\n", bestPlace.ID, bestPlace.DisplayName.Text)
-	return bestPlace.ID, nil
-}
-
-// extractPlaceIDFromURL extracts Google Place ID from Google Maps URL
-func extractPlaceIDFromURL(mapURL string) (string, error) {
-	fmt.Printf("DEBUG: Attempting to extract place_id from URL: %s\n", mapURL)
-	
-	// Method 1: Direct place_id parameter in URL
-	if strings.Contains(mapURL, "place_id=") {
-		re := regexp.MustCompile(`place_id=([A-Za-z0-9_-]+)`)
-		matches := re.FindStringSubmatch(mapURL)
-		if len(matches) >= 2 {
-			fmt.Printf("DEBUG: Found place_id in URL parameter: %s\n", matches[1])
-			return matches[1], nil
-		}
-	}
-
-	// Method 2: Extract from data parameter - multiple place references
-	// This URL contains multiple places, extract all possible place IDs
-	placePatterns := []string{
-		`!1s(0x[a-f0-9]+:0x[a-f0-9]+)!`,              // Hex format place IDs
-		`!3m5!1s(0x[a-f0-9]+:0x[a-f0-9]+)!`,          // Specific to the main place
-		`data=[^&]*!3m5!1s(0x[a-f0-9]+:0x[a-f0-9]+)`, // In data parameter
-		`/place/[^/]+/@[^/]+/data=[^!]*!3m5!1s(0x[a-f0-9]+:0x[a-f0-9]+)`, // Full path context
-	}
-	
-	// Find all potential place IDs
-	var foundPlaceIDs []string
-	for i, pattern := range placePatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllStringSubmatch(mapURL, -1)
-		for _, match := range matches {
-			if len(match) >= 2 {
-				placeID := match[1]
-				fmt.Printf("DEBUG: Found potential place_id with pattern %d: %s\n", i, placeID)
-				foundPlaceIDs = append(foundPlaceIDs, placeID)
-			}
-		}
-	}
-	
-	// Method 3: For complex URLs, try to identify the main place by context
-	// The URL path contains the place name, try to match the most relevant place ID
-	if len(foundPlaceIDs) > 0 {
-		// Extract place name from URL path for context
-		placeName := extractPlaceNameFromURL(mapURL)
-		fmt.Printf("DEBUG: Extracted place name from URL: '%s'\n", placeName)
-		
-		// For now, use the last found place ID (often the main target)
-		// In this case: 0x35546d98282af541:0xbe9e600b1755010b
-		bestPlaceID := foundPlaceIDs[len(foundPlaceIDs)-1]
-		fmt.Printf("DEBUG: Using place_id: %s\n", bestPlaceID)
-		return bestPlaceID, nil
-	}
-
-	// Method 4: Extract from place URL path and fetch to get place_id from page
-	if strings.Contains(mapURL, "/place/") {
-		fmt.Printf("DEBUG: Attempting to extract place_id from page content\n")
-		placeID, err := extractPlaceIDFromPage(mapURL)
-		if err == nil && placeID != "" {
-			fmt.Printf("DEBUG: Extracted place_id from page: %s\n", placeID)
-			return placeID, nil
-		}
-		fmt.Printf("DEBUG: Failed to extract from page: %v\n", err)
-	}
-
-	return "", fmt.Errorf("could not extract place_id from URL: %s", mapURL)
-}
-
-// extractPlaceNameFromURL extracts the place name from Google Maps URL path
-func extractPlaceNameFromURL(mapURL string) string {
-	// Extract place name from URL path like /place/日本一のだがし売場/@...
-	re := regexp.MustCompile(`/place/([^/@]+)`)
-	matches := re.FindStringSubmatch(mapURL)
-	if len(matches) >= 2 {
-		// URL decode the place name
-		decoded, err := url.QueryUnescape(matches[1])
-		if err == nil {
-			return decoded
-		}
-		return matches[1]
-	}
-	return ""
-}
-
-// extractPlaceIDFromPage extracts place ID by fetching the Google Maps page
-func extractPlaceIDFromPage(mapURL string) (string, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", mapURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch page: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read page: %v", err)
-	}
-
-	pageContent := string(body)
-
-	// Look for place_id patterns in the page content
-	patterns := []string{
-		`"place_id":"([A-Za-z0-9_-]+)"`,     // JSON format
-		`place_id=([A-Za-z0-9_-]+)`,            // URL parameter
-		`data-place-id="([A-Za-z0-9_-]+)"`,   // Data attribute
-		`"placeId":"([A-Za-z0-9_-]+)"`,     // Alternative JSON format
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindStringSubmatch(pageContent)
-		if len(matches) >= 2 {
-			placeID := matches[1]
-			if len(placeID) > 10 { // Place IDs are typically longer than 10 characters
-				return placeID, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("place_id not found in page content")
-}
-
-// extractWebsiteFromHTML extracts website URL from HTML content
+// extractWebsiteFromHTML extracts website URL from HTML content (placeholder)
 func extractWebsiteFromHTML(html string) string {
-	// Look for website patterns in the HTML
+	// Simple website URL extraction
 	patterns := []string{
-		`"url":"(https?://[^"]+)"`,               // JSON-LD format
-		`href="(https?://[^"]+)"[^>]*aria-label="Website"`, // Website link
-		`data-value="(https?://[^"]+)"[^>]*aria-label="Website"`, // Data attribute
-		`aria-label="Website: (https?://[^"]+)"`,  // Website aria-label
-		`"sameAs":\["(https?://[^"]+)"\]`,         // JSON-LD sameAs
-		`website.*?"(https?://[^"]+)"`,            // General website pattern
+		`"website_url":"([^"]+)"`,
+		`href="(https?://[^"]+)"`,
 	}
-
+	
 	for _, pattern := range patterns {
 		re := regexp.MustCompile(pattern)
 		matches := re.FindStringSubmatch(html)
 		if len(matches) >= 2 {
-			website := strings.TrimSpace(matches[1])
-			if website != "" && !strings.Contains(website, "google.com") {
-				return website
-			}
+			return matches[1]
 		}
 	}
-
+	
 	return ""
 }
