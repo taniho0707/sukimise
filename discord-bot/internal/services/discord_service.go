@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"sukimise-discord-bot/internal/models"
@@ -181,6 +182,16 @@ func (s *DiscordService) UpdateLastUsedAt(discordID string) error {
 	return err
 }
 
+func (s *DiscordService) UpdateTokens(discordID, accessToken, refreshToken string, expiry time.Time) error {
+	query := `
+		UPDATE discord_links 
+		SET access_token = $2, refresh_token = $3, token_expiry = $4, last_used_at = NOW() 
+		WHERE discord_id = $1
+	`
+	_, err := s.db.Exec(query, discordID, accessToken, refreshToken, expiry)
+	return err
+}
+
 func (s *DiscordService) authenticateWithSukimise(username, password string) (*models.AuthResponse, error) {
 	loginReq := map[string]string{
 		"username": username,
@@ -212,22 +223,10 @@ func (s *DiscordService) authenticateWithSukimise(username, password string) (*m
 }
 
 func (s *DiscordService) createStoreViaSukimise(discordID string, storeInfo *models.StoreCreateRequest) (*models.StoreCreateResponse, error) {
-	// Get Discord link with stored token
-	link, err := s.GetDiscordLink(discordID)
+	// Ensure we have a valid access token (refresh if necessary)
+	accessToken, err := s.ensureValidToken(discordID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Discord link: %v", err)
-	}
-
-	// Check if token is expired and refresh if needed
-	accessToken := link.AccessToken
-	if time.Now().After(link.TokenExpiry) {
-		// Token is expired, try to refresh
-		newToken, err := s.refreshToken(link.RefreshToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to refresh token, please reconnect: %v", err)
-		}
-		accessToken = newToken
-		// Update stored token (simplified, should also update refresh token and expiry)
+		return nil, err
 	}
 
 	jsonData, err := json.Marshal(storeInfo)
@@ -257,6 +256,31 @@ func (s *DiscordService) createStoreViaSukimise(discordID string, storeInfo *mod
 		return nil, fmt.Errorf("failed to make store creation request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	// Handle authentication errors - token might have been invalidated after our check
+	if resp.StatusCode == http.StatusUnauthorized {
+		fmt.Printf("DEBUG: Got 401 Unauthorized, attempting token refresh\n")
+		
+		// Try to refresh token one more time
+		newAccessToken, refreshErr := s.ensureValidToken(discordID)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		
+		// Create a new request with the refreshed token (need to recreate body)
+		newReq, err := http.NewRequest("POST", s.sukimiseAPIURL+"/api/v1/stores", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create retry request: %v", err)
+		}
+		newReq.Header.Set("Content-Type", "application/json")
+		newReq.Header.Set("Authorization", "Bearer "+newAccessToken)
+		
+		resp, err = client.Do(newReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retry store creation request: %v", err)
+		}
+		defer resp.Body.Close()
+	}
 
 	if resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -301,33 +325,84 @@ func (s *DiscordService) createStoreViaSukimise(discordID string, storeInfo *mod
 	return &apiResp.Data, nil
 }
 
-func (s *DiscordService) refreshToken(refreshToken string) (string, error) {
+func (s *DiscordService) refreshToken(refreshToken string) (*models.AuthResponse, error) {
 	refreshReq := map[string]string{
 		"refresh_token": refreshToken,
 	}
 
 	jsonData, err := json.Marshal(refreshReq)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal refresh request: %v", err)
+		return nil, fmt.Errorf("failed to marshal refresh request: %v", err)
 	}
 
 	resp, err := http.Post(s.sukimiseAPIURL+"/api/v1/auth/refresh", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", fmt.Errorf("failed to make refresh request: %v", err)
+		return nil, fmt.Errorf("failed to make refresh request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("refresh failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("refresh failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var refreshResp struct {
-		AccessToken string `json:"access_token"`
-	}
+	var refreshResp models.AuthResponse
 	if err := json.NewDecoder(resp.Body).Decode(&refreshResp); err != nil {
-		return "", fmt.Errorf("failed to decode refresh response: %v", err)
+		return nil, fmt.Errorf("failed to decode refresh response: %v", err)
 	}
 
-	return refreshResp.AccessToken, nil
+	return &refreshResp, nil
+}
+
+// ensureValidToken ensures that the user has a valid access token, refreshing if necessary,
+// or prompting for re-authentication if the refresh token is also invalid
+func (s *DiscordService) ensureValidToken(discordID string) (string, error) {
+	// Get Discord link with stored tokens
+	link, err := s.GetDiscordLink(discordID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get Discord link: %v", err)
+	}
+
+	// If token is still valid, return it
+	if time.Now().Before(link.TokenExpiry) {
+		return link.AccessToken, nil
+	}
+
+	fmt.Printf("DEBUG: Token expired for user %s, attempting refresh\n", link.Username)
+
+	// Token is expired, try to refresh
+	authResp, err := s.refreshToken(link.RefreshToken)
+	if err != nil {
+		fmt.Printf("DEBUG: Token refresh failed for user %s: %v\n", link.Username, err)
+		
+		// Check if it's a 401 error (invalid refresh token)
+		if isRefreshTokenInvalid(err) {
+			// Remove the invalid Discord link
+			if deleteErr := s.DeleteDiscordLink(discordID); deleteErr != nil {
+				fmt.Printf("DEBUG: Failed to delete invalid Discord link: %v\n", deleteErr)
+			}
+			return "", fmt.Errorf("認証が期限切れです。/connect コマンドを使用してアカウントを再接続してください")
+		}
+		
+		return "", fmt.Errorf("トークンの更新に失敗しました: %v", err)
+	}
+
+	fmt.Printf("DEBUG: Token refreshed successfully for user %s\n", link.Username)
+
+	// Update stored tokens
+	newExpiry := time.Now().Add(24 * time.Hour) // Tokens typically expire in 24 hours
+	if err := s.UpdateTokens(discordID, authResp.AccessToken, authResp.RefreshToken, newExpiry); err != nil {
+		fmt.Printf("DEBUG: Failed to update tokens in database: %v\n", err)
+		// Continue with the new token even if DB update failed
+	}
+
+	return authResp.AccessToken, nil
+}
+
+// isRefreshTokenInvalid checks if the error indicates an invalid refresh token (401 status)
+func isRefreshTokenInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "refresh failed with status 401")
 }
